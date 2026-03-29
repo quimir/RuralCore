@@ -1,0 +1,775 @@
+### ============================================================
+### 农产品模块 — 标签 + 补货 + 调价 + 购买人次 测试
+### 重命名为 .http 在 IntelliJ IDEA 中执行
+### 按顺序从上到下运行
+### ============================================================
+
+
+### ==================== 0. 初始化 ====================
+
+### 0.1 管理员登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+> {%
+    client.global.set("admin_token", response.body.data.token);
+%}
+
+###
+
+### 0.2 注册商家
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "张三果园",
+  "phone": "13800138000",
+  "role": "FARMER"
+}
+
+###
+
+### 0.3 商家登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("farmer_token", response.body.data.token);
+    client.global.set("farmer_id", response.body.data.userInfo.id);
+%}
+
+###
+
+### 0.4 注册买家
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "购物达人小王",
+  "role": "TOURIST"
+}
+
+###
+
+### 0.5 买家登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("buyer_token", response.body.data.token);
+%}
+
+###
+
+### 0.6 创建分类（如果还没有）
+POST http://localhost:8080/api/v1/admin/categories
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "水果",
+  "parentId": 0
+}
+
+> {%
+    if (response.body.code === 200) {
+        client.global.set("cat_fruit", response.body.data.id);
+    }
+%}
+
+###
+
+
+### ==================== 1. 发布带标签的产品 ====================
+
+### 1.1 ✅ 发布产品 — 带标签
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "红富士苹果",
+  "description": "山东烟台正宗红富士，脆甜多汁",
+  "price": 5.50,
+  "stock": 100,
+  "unit": "斤",
+  "origin": "山东烟台",
+  "tags": "有机, 绿色食品, 助农"
+}
+
+> {%
+    client.test("发布成功且含标签", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.tags === "有机,绿色食品,助农", "标签已规范化");
+        client.assert(response.body.data.buyerCount === 0, "初始购买人次为0");
+        client.assert(response.body.data.salesCount === 0, "初始销量为0");
+        client.assert(response.body.data.stock === 100, "库存100");
+    });
+    client.global.set("product_apple", response.body.data.id);
+    client.global.set("apple_price", response.body.data.price);
+%}
+
+###
+
+### 1.2 ✅ 发布产品 — 无标签（可选）
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "有机大白菜",
+  "description": "本地种植，无农药",
+  "price": 2.00,
+  "stock": 200,
+  "unit": "斤",
+  "origin": "山东烟台"
+}
+
+> {%
+    client.test("无标签也能正常发布", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.tags === undefined || response.body.data.tags === null,
+                      "无标签时为null");
+    });
+    client.global.set("product_cabbage", response.body.data.id);
+%}
+
+###
+
+### 1.3 ✅ 发布产品 — 带重复标签（自动去重）
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "烟台大樱桃",
+  "description": "时令鲜果，产地直发",
+  "price": 35.00,
+  "stock": 50,
+  "unit": "斤",
+  "origin": "山东烟台",
+  "tags": "时令, 有机, 时令, 有机, 助农"
+}
+
+> {%
+    client.test("重复标签自动去重", function() {
+        client.assert(response.body.code === 200);
+        var tags = response.body.data.tags.split(",");
+        // 去重后应只有3个
+        client.assert(tags.length === 3, "去重后3个标签, 实际: " + tags.length);
+    });
+    client.global.set("product_cherry", response.body.data.id);
+%}
+
+###
+
+
+### ==================== 2. 标签查询 ====================
+
+### 2.1 ✅ 获取所有标签（公开接口）
+GET http://localhost:8080/api/v1/products/tags
+
+> {%
+    client.test("获取标签列表", function() {
+        client.assert(response.body.code === 200);
+        var tags = response.body.data;
+        client.assert(tags.length >= 3, "至少3个标签");
+        client.assert(tags.indexOf("有机") >= 0, "包含'有机'");
+        client.assert(tags.indexOf("绿色食品") >= 0, "包含'绿色食品'");
+        client.assert(tags.indexOf("助农") >= 0, "包含'助农'");
+    });
+%}
+
+###
+
+### 2.2 ✅ 按标签筛选 — "有机"
+GET http://localhost:8080/api/v1/products?tag=有机&page=1&size=10
+
+> {%
+    client.test("按标签筛选", function() {
+        client.assert(response.body.code === 200);
+        // 苹果和樱桃都有"有机"标签
+        client.assert(response.body.data.records.length >= 2, "至少2个有机产品");
+        response.body.data.records.forEach(function(p) {
+            client.assert(p.tags.indexOf("有机") >= 0, p.name + "包含有机标签");
+        });
+    });
+%}
+
+###
+
+### 2.3 ✅ 按标签筛选 — "绿色食品"（只有苹果有）
+GET http://localhost:8080/api/v1/products?tag=绿色食品&page=1&size=10
+
+> {%
+    client.test("绿色食品只匹配苹果", function() {
+        client.assert(response.body.data.records.length >= 1);
+        client.assert(response.body.data.records[0].name === "红富士苹果");
+    });
+%}
+
+###
+
+### 2.4 ✅ 按标签筛选 — 不存在的标签
+GET http://localhost:8080/api/v1/products?tag=不存在的标签&page=1&size=10
+
+> {%
+    client.test("不存在的标签返回空", function() {
+        client.assert(response.body.data.records.length === 0);
+    });
+%}
+
+###
+
+### 2.5 ✅ 标签 + 关键词组合筛选
+GET http://localhost:8080/api/v1/products?tag=有机&keyword=苹果&page=1&size=10
+
+> {%
+    client.test("标签+关键词组合筛选", function() {
+        client.assert(response.body.data.records.length === 1);
+        client.assert(response.body.data.records[0].name === "红富士苹果");
+    });
+%}
+
+###
+
+
+### ==================== 3. PATCH 部分更新 — 补货测试 ====================
+
+### 3.1 ✅ 补货: 库存100 → 500
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "stock": 500
+}
+
+> {%
+    client.test("补货成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.stock === 500, "库存变500");
+        client.assert(response.body.data.price == 5.50, "价格没变");
+        client.assert(response.body.data.tags === "有机,绿色食品,助农", "标签没变");
+        client.assert(response.body.data.name === "红富士苹果", "名字没变");
+        client.assert(response.body.data.status === "ON_SALE", "状态正常");
+    });
+%}
+
+###
+
+### 3.2 ✅ 验证: 先把库存清零模拟售罄
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "stock": 0
+}
+
+> {%
+    client.test("库存清零→售罄", function() {
+        client.assert(response.body.data.stock === 0);
+        client.assert(response.body.data.status === "SOLD_OUT", "自动标记售罄");
+    });
+%}
+
+###
+
+### 3.3 ✅ 验证: 补货后自动恢复上架
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "stock": 300
+}
+
+> {%
+    client.test("补货后自动恢复上架", function() {
+        client.assert(response.body.data.stock === 300, "库存300");
+        client.assert(response.body.data.status === "ON_SALE", "售罄→自动恢复ON_SALE");
+    });
+%}
+
+###
+
+
+### ==================== 4. PATCH 部分更新 — 调价测试 ====================
+
+### 4.1 ✅ 降价: 5.50 → 3.99
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "price": 3.99
+}
+
+> {%
+    client.test("降价成功", function() {
+        client.assert(response.body.data.price == 3.99, "价格变3.99");
+        client.assert(response.body.data.stock === 300, "库存没变");
+        client.assert(response.body.data.tags === "有机,绿色食品,助农", "标签没变");
+    });
+%}
+
+###
+
+### 4.2 ✅ 调回原价: 3.99 → 5.50
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "price": 5.50
+}
+
+> {%
+    client.test("调回原价成功", function() {
+        client.assert(response.body.data.price == 5.50, "价格恢复5.50");
+    });
+%}
+
+###
+
+### 4.3 ✅ 涨价: 5.50 → 8.80
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "price": 8.80
+}
+
+> {%
+    client.test("涨价成功", function() {
+        client.assert(response.body.data.price == 8.80, "价格8.80");
+    });
+%}
+
+###
+
+### 4.4 ❌ 调价为0（应拒绝）
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "price": 0
+}
+
+> {%
+    client.test("价格为0被拒绝", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 4.5 ✅ 调回正常价格
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "price": 5.50
+}
+
+> {%
+    client.test("调回正常价格", function() {
+        client.assert(response.body.data.price == 5.50);
+    });
+%}
+
+###
+
+### 4.6 ❌ 库存为负数（应拒绝）
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "stock": -10
+}
+
+> {%
+    client.test("负数库存被拒绝", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+
+### ==================== 5. PATCH — 标签增删改 ====================
+
+### 5.1 ✅ 给无标签商品加标签
+PATCH http://localhost:8080/api/v1/products/{{product_cabbage}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "tags": "新鲜蔬菜,本地种植"
+}
+
+> {%
+    client.test("给白菜加标签", function() {
+        client.assert(response.body.data.tags === "新鲜蔬菜,本地种植");
+        client.assert(response.body.data.price == 2.00, "其他字段没变");
+    });
+%}
+
+###
+
+### 5.2 ✅ 修改标签（全量替换）
+PATCH http://localhost:8080/api/v1/products/{{product_cabbage}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "tags": "新鲜蔬菜,本地种植,有机"
+}
+
+> {%
+    client.test("追加有机标签", function() {
+        client.assert(response.body.data.tags === "新鲜蔬菜,本地种植,有机");
+    });
+%}
+
+###
+
+### 5.3 ✅ 清除标签（传空字符串）
+PATCH http://localhost:8080/api/v1/products/{{product_cabbage}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "tags": ""
+}
+
+> {%
+    client.test("清除标签成功", function() {
+        client.assert(response.body.data.tags === undefined || response.body.data.tags === null,
+                      "标签已清除");
+    });
+%}
+
+###
+
+### 5.4 ✅ 再次恢复标签
+PATCH http://localhost:8080/api/v1/products/{{product_cabbage}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "tags": "新鲜蔬菜"
+}
+
+> {%
+    client.test("恢复标签", function() {
+        client.assert(response.body.data.tags === "新鲜蔬菜");
+    });
+%}
+
+###
+
+### 5.5 ✅ 同时改价格+标签+库存
+PATCH http://localhost:8080/api/v1/products/{{product_cabbage}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "price": 1.50,
+  "stock": 500,
+  "tags": "新鲜蔬菜,特价,限时优惠"
+}
+
+> {%
+    client.test("多字段同时改", function() {
+        client.assert(response.body.data.price == 1.50);
+        client.assert(response.body.data.stock === 500);
+        client.assert(response.body.data.tags === "新鲜蔬菜,特价,限时优惠");
+    });
+%}
+
+###
+
+
+### ==================== 6. 购买人次验证 ====================
+
+### 6.1 买家将苹果加入购物车
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_apple}},
+  "quantity": 3
+}
+
+> {%
+    client.test("加购成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 6.2 创建订单
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "shippingAddress": "山东省烟台市XX路XX号",
+  "receiverName": "小王",
+  "receiverPhone": "13900139000"
+}
+
+> {%
+    client.test("下单成功", function() {
+        client.assert(response.body.code === 200);
+    });
+    client.global.set("order_1", response.body.data.id);
+%}
+
+###
+
+### 6.3 ✅ 验证: 购买人次 +1，销量 +3，库存 -3
+GET http://localhost:8080/api/v1/products/{{product_apple}}
+
+> {%
+    client.test("下单后数据正确", function() {
+        var p = response.body.data;
+        client.assert(p.buyerCount === 1, "购买人次=1, 实际=" + p.buyerCount);
+        client.assert(p.salesCount === 3, "销量=3(买了3斤), 实际=" + p.salesCount);
+        client.assert(p.stock === 297, "库存=300-3=297, 实际=" + p.stock);
+    });
+%}
+
+###
+
+### 6.4 买家再下一单（同一商品第二次下单）
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_apple}},
+  "quantity": 5
+}
+
+###
+
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "shippingAddress": "山东省烟台市XX路XX号",
+  "receiverName": "小王",
+  "receiverPhone": "13900139000"
+}
+
+> {%
+    client.global.set("order_2", response.body.data.id);
+%}
+
+###
+
+### 6.5 ✅ 验证: 购买人次变2（两笔订单），销量 +5
+GET http://localhost:8080/api/v1/products/{{product_apple}}
+
+> {%
+    client.test("第二单后数据正确", function() {
+        var p = response.body.data;
+        client.assert(p.buyerCount === 2, "购买人次=2(两笔订单), 实际=" + p.buyerCount);
+        client.assert(p.salesCount === 8, "销量=3+5=8, 实际=" + p.salesCount);
+        client.assert(p.stock === 292, "库存=300-3-5=292, 实际=" + p.stock);
+    });
+%}
+
+###
+
+### 6.6 取消第二个订单
+PUT http://localhost:8080/api/v1/orders/{{order_2}}/cancel
+Authorization: Bearer {{buyer_token}}
+
+###
+
+### 6.7 ✅ 验证: 取消后购买人次 -1，库存恢复
+GET http://localhost:8080/api/v1/products/{{product_apple}}
+
+> {%
+    client.test("取消订单后数据恢复", function() {
+        var p = response.body.data;
+        client.assert(p.buyerCount === 1, "购买人次恢复为1, 实际=" + p.buyerCount);
+        client.assert(p.salesCount === 3, "销量恢复为3, 实际=" + p.salesCount);
+        client.assert(p.stock === 297, "库存恢复为297, 实际=" + p.stock);
+    });
+%}
+
+###
+
+
+### ==================== 7. 按购买人次排序 ====================
+
+### 7.1 ✅ 按 buyers_desc 排序
+GET http://localhost:8080/api/v1/products?sort=buyers_desc&page=1&size=10
+
+> {%
+    client.test("按购买人次降序排列", function() {
+        client.assert(response.body.code === 200);
+        var records = response.body.data.records;
+        if (records.length >= 2) {
+            client.assert(records[0].buyerCount >= records[1].buyerCount,
+                          "第一个的购买人次 >= 第二个");
+        }
+    });
+%}
+
+###
+
+
+### ==================== 8. 权限验证 ====================
+
+### 8.1 ❌ 买家不能 PATCH 别人的产品
+PATCH http://localhost:8080/api/v1/products/{{product_apple}}
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "price": 0.01
+}
+
+> {%
+    client.test("买家改不了别人的产品", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 8.2 ✅ 商家补货后确认价格没被篡改
+GET http://localhost:8080/api/v1/products/{{product_apple}}
+
+> {%
+    client.test("数据完整性检查", function() {
+        var p = response.body.data;
+        client.assert(p.price == 5.50, "价格未被篡改");
+        client.assert(p.tags === "有机,绿色食品,助农", "标签未被篡改");
+        client.assert(p.sellerName === "张三果园", "卖家信息正确");
+    });
+%}
+
+###
+
+
+### ==================== 9. 综合场景: 售罄→补货→下单 ====================
+
+### 9.1 把樱桃库存设为1
+PATCH http://localhost:8080/api/v1/products/{{product_cherry}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "stock": 1
+}
+
+###
+
+### 9.2 买家下单买光最后1斤
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_cherry}},
+  "quantity": 1
+}
+
+###
+
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "shippingAddress": "山东省烟台市XX路",
+  "receiverName": "小王",
+  "receiverPhone": "13900139000"
+}
+
+###
+
+### 9.3 ✅ 验证: 樱桃自动售罄
+GET http://localhost:8080/api/v1/products/{{product_cherry}}
+
+> {%
+    client.test("樱桃买光→售罄", function() {
+        var p = response.body.data;
+        client.assert(p.stock === 0, "库存为0");
+        client.assert(p.status === "SOLD_OUT", "自动标记售罄");
+        client.assert(p.buyerCount === 1, "有1次购买");
+    });
+%}
+
+###
+
+### 9.4 ✅ 商家补货樱桃 → 自动恢复上架
+PATCH http://localhost:8080/api/v1/products/{{product_cherry}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "stock": 100,
+  "price": 30.00,
+  "tags": "时令,有机,助农,新到货"
+}
+
+> {%
+    client.test("补货+调价+改标签一步完成", function() {
+        var p = response.body.data;
+        client.assert(p.stock === 100, "库存补到100");
+        client.assert(p.status === "ON_SALE", "自动恢复上架");
+        client.assert(p.price == 30.00, "价格调为30");
+        client.assert(p.tags.indexOf("新到货") >= 0, "新标签生效");
+        client.assert(p.buyerCount === 1, "购买人次不受影响");
+    });
+%}
+
+###
+
+### 9.5 ✅ 补货后可以再次被搜索到（售罄商品默认不展示）
+GET http://localhost:8080/api/v1/products?keyword=樱桃&page=1&size=10
+
+> {%
+    client.test("补货后能被搜到", function() {
+        client.assert(response.body.data.records.length >= 1, "樱桃回到搜索结果");
+        client.assert(response.body.data.records[0].status === "ON_SALE");
+    });
+%}
+
+###

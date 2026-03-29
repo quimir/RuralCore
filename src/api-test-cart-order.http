@@ -1,0 +1,681 @@
+### ============================================================
+### 乡村振兴管理系统 — 购物车 + 下单流程测试
+### 下载后重命名为 api-test.http 放到 IDEA 项目根目录
+### 按顺序从上到下执行，脚本会自动提取和传递变量
+### ============================================================
+### ⚠️ 前置条件: 先跑完之前的测试（注册用户、创建分类、发布商品）
+### 或者先执行下面的快速初始化部分
+
+
+### ==================== 快速初始化 ====================
+
+### 0.1 管理员登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+> {%
+    client.global.set("admin_token", response.body.data.token);
+%}
+
+###
+
+### 0.2 注册商家（如果已注册会返回400，忽略即可）
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "张三果园",
+  "phone": "13800138001",
+  "role": "MERCHANT"
+}
+
+###
+
+### 0.3 注册买家
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "李四"
+}
+
+###
+
+### 0.4 商家登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("farmer_token", response.body.data.token);
+    client.global.set("farmer_id", response.body.data.userInfo.id);
+%}
+
+###
+
+### 0.5 买家登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "buyer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("buyer_token", response.body.data.token);
+    client.global.set("buyer_id", response.body.data.userInfo.id);
+    client.log("✅ 买家登录成功, id=" + response.body.data.userInfo.id);
+%}
+
+###
+
+### 0.6 创建分类（如果已存在会返回400，忽略）
+POST http://localhost:8080/api/v1/admin/categories
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "水果",
+  "parentId": 0
+}
+
+> {%
+    if (response.body.code === 200) {
+        client.global.set("cat_fruit", response.body.data.id);
+    }
+%}
+
+###
+
+### 0.7 商家发布商品 — 红富士苹果
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "红富士苹果",
+  "description": "山东烟台红富士",
+  "price": 5.50,
+  "stock": 100,
+  "unit": "斤",
+  "origin": "山东烟台"
+}
+
+> {%
+    client.global.set("product_apple", response.body.data.id);
+    client.log("✅ 苹果ID: " + response.body.data.id);
+%}
+
+###
+
+### 0.8 商家发布商品 — 有机番茄
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "有机番茄",
+  "description": "山东寿光有机番茄",
+  "price": 8.00,
+  "stock": 50,
+  "unit": "斤",
+  "origin": "山东寿光"
+}
+
+> {%
+    client.global.set("product_tomato", response.body.data.id);
+    client.log("✅ 番茄ID: " + response.body.data.id);
+%}
+
+###
+
+### 0.9 商家发布商品 — 沙糖桔
+POST http://localhost:8080/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "沙糖桔",
+  "description": "广西桂林沙糖桔",
+  "price": 3.80,
+  "stock": 200,
+  "unit": "斤",
+  "origin": "广西桂林"
+}
+
+> {%
+    client.global.set("product_orange", response.body.data.id);
+    client.log("✅ 沙糖桔ID: " + response.body.data.id);
+%}
+
+###
+
+### ==================== 1. 购物车操作 ====================
+
+### 1.1 买家加入购物车 — 苹果 3斤
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_apple}},
+  "quantity": 3
+}
+
+> {%
+    client.global.set("cart_item_apple", response.body.data.id);
+    client.test("加入购物车成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.quantity === 3);
+        client.assert(response.body.data.subtotal === 16.5);
+    });
+%}
+
+###
+
+### 1.2 加入购物车 — 番茄 2斤
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_tomato}},
+  "quantity": 2
+}
+
+> {%
+    client.global.set("cart_item_tomato", response.body.data.id);
+%}
+
+###
+
+### 1.3 加入购物车 — 沙糖桔 5斤
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_orange}},
+  "quantity": 5
+}
+
+> {%
+    client.global.set("cart_item_orange", response.body.data.id);
+%}
+
+###
+
+### 1.4 再次加入苹果（应累加数量，变成3+2=5）
+POST http://localhost:8080/api/v1/cart
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "productId": {{product_apple}},
+  "quantity": 2
+}
+
+> {%
+    client.test("数量累加到5", function() {
+        client.assert(response.body.data.quantity === 5);
+    });
+%}
+
+###
+
+### 1.5 查看购物车
+GET http://localhost:8080/api/v1/cart
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("购物车有3种商品", function() {
+        client.assert(response.body.data.totalCount === 3);
+        client.assert(response.body.data.selectedCount === 3, "默认全部选中");
+    });
+    client.log("✅ 购物车总金额: " + response.body.data.selectedAmount);
+%}
+
+###
+
+### 1.6 修改苹果数量为10斤
+PUT http://localhost:8080/api/v1/cart/{{cart_item_apple}}
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "quantity": 10
+}
+
+> {%
+    client.test("数量已改为10", function() {
+        client.assert(response.body.data.quantity === 10);
+    });
+%}
+
+###
+
+### 1.7 取消勾选沙糖桔（不参与结算）
+PUT http://localhost:8080/api/v1/cart/{{cart_item_orange}}
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "selected": false
+}
+
+> {%
+    client.test("已取消勾选", function() {
+        client.assert(response.body.data.selected === false);
+    });
+%}
+
+###
+
+### 1.8 再次查看购物车（验证汇总数据）
+GET http://localhost:8080/api/v1/cart
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("2个选中，1个未选", function() {
+        client.assert(response.body.data.selectedCount === 2);
+        client.assert(response.body.data.allSelected === false, "不是全选");
+    });
+    client.log("✅ 选中金额: " + response.body.data.selectedAmount);
+%}
+
+###
+
+### 1.9 全选
+PUT http://localhost:8080/api/v1/cart/select-all
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "selected": true
+}
+
+###
+
+### 1.10 取消全选
+PUT http://localhost:8080/api/v1/cart/select-all
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "selected": false
+}
+
+###
+
+### 1.11 重新选中苹果和番茄（准备下单）
+PUT http://localhost:8080/api/v1/cart/{{cart_item_apple}}
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "selected": true
+}
+
+###
+
+PUT http://localhost:8080/api/v1/cart/{{cart_item_tomato}}
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "selected": true
+}
+
+###
+
+### 1.12 购物车角标数量
+GET http://localhost:8080/api/v1/cart/count
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("购物车有3种商品", function() {
+        client.assert(response.body.data === 3);
+    });
+%}
+
+###
+
+### ==================== 2. 下单流程 ====================
+
+### 2.1 下单（购物车中选中的商品→订单）
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "shippingAddress": "浙江省杭州市西湖区文三路123号",
+  "receiverName": "李四",
+  "receiverPhone": "13900139000",
+  "remark": "请周末配送"
+}
+
+> {%
+    client.global.set("order_id", response.body.data.id);
+    client.global.set("order_no", response.body.data.orderNo);
+    client.test("下单成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.status === "PENDING_PAYMENT");
+        client.assert(response.body.data.items.length === 2, "应有苹果和番茄2个明细");
+    });
+    client.log("✅ 订单号: " + response.body.data.orderNo);
+    client.log("✅ 订单总金额: " + response.body.data.totalAmount);
+%}
+
+###
+
+### 2.2 下单后查看购物车（选中的应被清除，沙糖桔还在）
+GET http://localhost:8080/api/v1/cart
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("已下单商品从购物车移除", function() {
+        client.assert(response.body.data.totalCount === 1, "只剩沙糖桔");
+    });
+%}
+
+###
+
+### 2.3 下单后查看产品库存（应已扣减）
+GET http://localhost:8080/api/v1/products/{{product_apple}}
+
+> {%
+    client.test("库存已扣减", function() {
+        client.assert(response.body.data.stock === 90, "100 - 10 = 90");
+    });
+%}
+
+###
+
+### ==================== 3. 订单管理 ====================
+
+### 3.1 查看订单详情
+GET http://localhost:8080/api/v1/orders/{{order_id}}
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("订单详情正确", function() {
+        client.assert(response.body.data.orderNo === client.global.get("order_no"));
+        client.assert(response.body.data.receiverName === "李四");
+        client.assert(response.body.data.items.length === 2);
+    });
+%}
+
+###
+
+### 3.2 我的订单列表（全部）
+GET http://localhost:8080/api/v1/orders?page=1&size=10
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("订单列表有数据", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### 3.3 按状态筛选 — 待付款
+GET http://localhost:8080/api/v1/orders?status=PENDING_PAYMENT&page=1&size=10
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("有待付款订单", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### ==================== 4. 订单状态流转 ====================
+
+### 4.1 买家支付
+PUT http://localhost:8080/api/v1/orders/{{order_id}}/pay
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("支付成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 4.2 验证支付后状态变为 PAID
+GET http://localhost:8080/api/v1/orders/{{order_id}}
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("状态为PAID", function() {
+        client.assert(response.body.data.status === "PAID");
+        client.assert(response.body.data.paidAt != null);
+    });
+%}
+
+###
+
+### 4.3 卖家发货
+PUT http://localhost:8080/api/v1/orders/{{order_id}}/ship
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("发货成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 4.4 验证发货后状态
+GET http://localhost:8080/api/v1/orders/{{order_id}}
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("状态为SHIPPED", function() {
+        client.assert(response.body.data.status === "SHIPPED");
+        client.assert(response.body.data.shippedAt != null);
+    });
+%}
+
+###
+
+### 4.5 买家确认收货
+PUT http://localhost:8080/api/v1/orders/{{order_id}}/confirm
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("确认收货成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 4.6 验证最终状态
+GET http://localhost:8080/api/v1/orders/{{order_id}}
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("订单已完成", function() {
+        client.assert(response.body.data.status === "COMPLETED");
+        client.assert(response.body.data.completedAt != null);
+    });
+%}
+
+###
+
+### ==================== 5. 取消订单测试 ====================
+
+### 5.1 先重新选中沙糖桔并下一个新单
+PUT http://localhost:8080/api/v1/cart/{{cart_item_orange}}
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "selected": true
+}
+
+###
+
+### 5.2 下单（沙糖桔5斤）
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "shippingAddress": "上海市浦东新区xxx路",
+  "receiverName": "李四",
+  "receiverPhone": "13900139000"
+}
+
+> {%
+    client.global.set("cancel_order_id", response.body.data.id);
+    client.log("✅ 待取消订单ID: " + response.body.data.id);
+%}
+
+###
+
+### 5.3 查看沙糖桔库存（应从200减为195）
+GET http://localhost:8080/api/v1/products/{{product_orange}}
+
+> {%
+    client.test("库存已扣减", function() {
+        client.assert(response.body.data.stock === 195);
+    });
+%}
+
+###
+
+### 5.4 取消订单
+PUT http://localhost:8080/api/v1/orders/{{cancel_order_id}}/cancel
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("取消成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 5.5 验证库存已恢复
+GET http://localhost:8080/api/v1/products/{{product_orange}}
+
+> {%
+    client.test("库存恢复到200", function() {
+        client.assert(response.body.data.stock === 200);
+    });
+%}
+
+###
+
+### 5.6 验证订单状态为 CANCELLED
+GET http://localhost:8080/api/v1/orders/{{cancel_order_id}}
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("状态为CANCELLED", function() {
+        client.assert(response.body.data.status === "CANCELLED");
+    });
+%}
+
+###
+
+### ==================== 6. 异常场景 ====================
+
+### 6.1 ❌ 购物车为空时下单（应报错）
+POST http://localhost:8080/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer {{buyer_token}}
+
+{
+  "shippingAddress": "测试地址",
+  "receiverName": "测试",
+  "receiverPhone": "13800138000"
+}
+
+> {%
+    client.test("空购物车不能下单", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 6.2 ❌ 已支付订单不能再次支付
+PUT http://localhost:8080/api/v1/orders/{{order_id}}/pay
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("已完成订单不能支付", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 6.3 ❌ 已取消订单不能支付
+PUT http://localhost:8080/api/v1/orders/{{cancel_order_id}}/pay
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("已取消订单不能支付", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 6.4 ❌ 其他用户不能查看别人的订单
+GET http://localhost:8080/api/v1/orders/{{order_id}}
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("无权查看返回403", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 6.5 删除购物车条目
+DELETE http://localhost:8080/api/v1/cart/{{cart_item_orange}}
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("删除成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 6.6 验证购物车已空
+GET http://localhost:8080/api/v1/cart
+Authorization: Bearer {{buyer_token}}
+
+> {%
+    client.test("购物车为空", function() {
+        client.assert(response.body.data.totalCount === 0);
+    });
+%}

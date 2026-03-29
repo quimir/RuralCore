@@ -1,0 +1,793 @@
+### ============================================================
+### 乡村振兴管理系统 — 旅游预约 + 路线规划 测试
+### 下载后重命名为 api-test-booking-route.http
+### ============================================================
+### 前置条件: 先跑 api-test-tourism.http 的初始化部分
+###   - 管理员 admin/admin123 已登录 → admin_token
+###   - 商家 farmer01 已登录 → farmer_token
+###   - 游客 tourist01 已登录 → tourist_token
+###   - 已有 APPROVED 的采摘园(spot_picking) 和 非遗体验(spot_folk)
+### ============================================================
+
+
+### ==================== 0. 初始化 ====================
+
+### 0.1 管理员登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+> {%
+    client.global.set("admin_token", response.body.data.token);
+%}
+
+###
+
+### 0.2 商家登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("farmer_token", response.body.data.token);
+%}
+
+###
+
+### 0.3 游客登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "tourist01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("tourist_token", response.body.data.token);
+%}
+
+###
+
+### 0.4 管理员发布采摘园（如果还没有）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "title": "测试采摘园-预约用",
+  "summary": "专门用于测试预约功能的采摘园",
+  "type": "PICKING_GARDEN",
+  "address": "山东省烟台市测试路1号",
+  "openingHours": "08:00-17:30",
+  "ticketPrice": 0
+}
+
+> {%
+    client.global.set("spot_id", response.body.data.id);
+    client.log("✅ 测试景点ID: " + response.body.data.id);
+%}
+
+###
+
+### 0.5 管理员发布民宿
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "title": "测试民宿-预约用",
+  "summary": "专门用于测试住宿预约的民宿",
+  "type": "FARMSTAY",
+  "address": "浙江省杭州市测试路2号",
+  "openingHours": "全年营业",
+  "ticketPrice": 298
+}
+
+> {%
+    client.global.set("spot_room", response.body.data.id);
+    client.log("✅ 测试民宿ID: " + response.body.data.id);
+%}
+
+###
+
+### ==================== 1. 票务配置（商家/管理员） ====================
+
+### 1.1 管理员为采摘园添加票型 — 成人票
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "成人票",
+  "description": "含入园+采摘体验，可带走2斤水果",
+  "price": 68.00,
+  "category": "TICKET",
+  "dailyCapacity": 100,
+  "minQuantity": 1,
+  "maxQuantity": 10,
+  "advanceDays": 0
+}
+
+> {%
+    client.global.set("ticket_adult", response.body.data.id);
+    client.test("成人票创建成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.category === "TICKET");
+    });
+    client.log("✅ 成人票ID: " + response.body.data.id);
+%}
+
+###
+
+### 1.2 添加儿童票
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "儿童票",
+  "description": "1.2m以下儿童，需家长陪同",
+  "price": 38.00,
+  "category": "TICKET",
+  "dailyCapacity": 50,
+  "minQuantity": 1,
+  "maxQuantity": 5,
+  "advanceDays": 0
+}
+
+> {%
+    client.global.set("ticket_child", response.body.data.id);
+%}
+
+###
+
+### 1.3 添加家庭套票（至少2人起订）
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "家庭套票",
+  "description": "2大1小，含午餐",
+  "price": 158.00,
+  "category": "TICKET",
+  "dailyCapacity": 30,
+  "minQuantity": 1,
+  "maxQuantity": 5,
+  "advanceDays": 1
+}
+
+> {%
+    client.global.set("ticket_family", response.body.data.id);
+%}
+
+###
+
+### 1.4 为民宿添加票型 — 标准间（住宿类）
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_room}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "标准间",
+  "description": "大床房，含早餐",
+  "price": 298.00,
+  "category": "ROOM",
+  "dailyCapacity": 10,
+  "minQuantity": 1,
+  "maxQuantity": 3,
+  "advanceDays": 1
+}
+
+> {%
+    client.global.set("ticket_room", response.body.data.id);
+    client.test("住宿票型创建成功", function() {
+        client.assert(response.body.data.category === "ROOM");
+    });
+%}
+
+###
+
+### 1.5 ❌ 重复票型名称
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "成人票",
+  "price": 88.00,
+  "category": "TICKET",
+  "dailyCapacity": 50
+}
+
+> {%
+    client.test("同名票型被拦截", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### ==================== 2. 查看票型（公开） ====================
+
+### 2.1 不带日期 — 不返回余量
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets
+
+> {%
+    client.test("返回票型列表", function() {
+        client.assert(response.body.data.length >= 3);
+        client.assert(response.body.data[0].remaining === null, "无日期时不返回余量");
+    });
+%}
+
+###
+
+### 2.2 带日期 — 返回余量
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets?date=2026-03-15
+
+> {%
+    client.test("带日期返回余量", function() {
+        var first = response.body.data[0];
+        client.assert(first.remaining !== null, "有余量");
+        client.assert(first.remaining === first.dailyCapacity, "未预约时余量=容量");
+    });
+%}
+
+###
+
+### ==================== 3. 在线预约（用户） ====================
+
+### 3.1 游客预约成人票（2张）
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "ticketId": {{ticket_adult}},
+  "visitDate": "2026-03-15",
+  "quantity": 2,
+  "contactName": "旅行者小王",
+  "contactPhone": "13900139000",
+  "remark": "带2个朋友"
+}
+
+> {%
+    client.global.set("booking_1", response.body.data.id);
+    client.global.set("booking_code_1", response.body.data.bookingCode);
+    client.test("预约成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.status === "PENDING_PAYMENT");
+        client.assert(response.body.data.totalAmount === 136.00, "68×2=136");
+        client.assert(response.body.data.bookingCode.length === 6, "6位预约码");
+    });
+    client.log("✅ 预约码: " + response.body.data.bookingCode);
+%}
+
+###
+
+### 3.2 查看余量变化（应减少2）
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets?date=2026-03-15
+
+> {%
+    client.test("余量已减少", function() {
+        var adult = response.body.data.find(t => t.name === "成人票");
+        client.assert(adult.remaining === adult.dailyCapacity - 2, "余量减2");
+    });
+%}
+
+###
+
+### 3.3 预约住宿（标准间，住2晚）
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "ticketId": {{ticket_room}},
+  "checkIn": "2026-03-15",
+  "checkOut": "2026-03-17",
+  "quantity": 1,
+  "contactName": "旅行者小王",
+  "contactPhone": "13900139000"
+}
+
+> {%
+    client.global.set("booking_room", response.body.data.id);
+    client.test("住宿预约成功", function() {
+        client.assert(response.body.data.nights === 2, "住2晚");
+        client.assert(response.body.data.totalAmount === 596.00, "298×1×2晚=596");
+    });
+%}
+
+###
+
+### 3.4 ❌ 住宿类不传日期
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "ticketId": {{ticket_room}},
+  "visitDate": "2026-03-20",
+  "quantity": 1,
+  "contactName": "测试",
+  "contactPhone": "13800138000"
+}
+
+> {%
+    client.test("住宿类必须传入住退房日期", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 3.5 ❌ 预约过去的日期
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "ticketId": {{ticket_adult}},
+  "visitDate": "2020-01-01",
+  "quantity": 1,
+  "contactName": "测试",
+  "contactPhone": "13800138000"
+}
+
+> {%
+    client.test("不能预约过去日期", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 3.6 ❌ 低于最小数量
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "ticketId": {{ticket_adult}},
+  "visitDate": "2026-03-16",
+  "quantity": 0,
+  "contactName": "测试",
+  "contactPhone": "13800138000"
+}
+
+> {%
+    client.test("数量校验", function() {
+        client.assert(response.body.code !== 200);
+    });
+%}
+
+###
+
+### ==================== 4. 预约状态流转 ====================
+
+### 4.1 查看我的预约列表
+GET http://localhost:8080/api/v1/tourism/bookings?page=1&size=10
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("有预约记录", function() {
+        client.assert(response.body.data.records.length >= 2);
+    });
+%}
+
+###
+
+### 4.2 查看预约详情
+GET http://localhost:8080/api/v1/tourism/bookings/{{booking_1}}
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("详情完整", function() {
+        client.assert(response.body.data.bookingCode === client.global.get("booking_code_1"));
+        client.assert(response.body.data.spotName !== null);
+    });
+%}
+
+###
+
+### 4.3 支付预约
+PUT http://localhost:8080/api/v1/tourism/bookings/{{booking_1}}/pay
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("支付成功 → CONFIRMED", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 4.4 查看支付后的状态
+GET http://localhost:8080/api/v1/tourism/bookings/{{booking_1}}
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("状态已变CONFIRMED", function() {
+        client.assert(response.body.data.status === "CONFIRMED");
+        client.assert(response.body.data.paidAt !== null);
+    });
+%}
+
+###
+
+### 4.5 ❌ 重复支付
+PUT http://localhost:8080/api/v1/tourism/bookings/{{booking_1}}/pay
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("不能重复支付", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 4.6 商家核验预约码
+PUT http://localhost:8080/api/v1/tourism/bookings/verify
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "bookingCode": "{{booking_code_1}}"
+}
+
+> {%
+    client.test("核验成功 → USED", function() {
+        client.assert(response.body.data.status === "USED");
+        client.assert(response.body.data.usedAt !== null);
+    });
+%}
+
+###
+
+### 4.7 ❌ 再次核验
+PUT http://localhost:8080/api/v1/tourism/bookings/verify
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "bookingCode": "{{booking_code_1}}"
+}
+
+> {%
+    client.test("已使用不能再核验", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 4.8 取消住宿预约（待付款状态可取消）
+PUT http://localhost:8080/api/v1/tourism/bookings/{{booking_room}}/cancel
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("取消成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 4.9 取消后余量应恢复 — 查民宿票型余量
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_room}}/tickets?date=2026-03-15
+
+> {%
+    client.test("取消后余量恢复", function() {
+        var room = response.body.data[0];
+        client.assert(room.remaining === room.dailyCapacity, "容量已恢复");
+    });
+%}
+
+###
+
+### ==================== 5. 路线规划 ====================
+
+### 5.1 游客创建路线
+POST http://localhost:8080/api/v1/tourism/routes
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "title": "烟台周末两日游",
+  "description": "采摘+民宿，带娃度周末",
+  "totalDays": 2,
+  "startDate": "2026-03-20",
+  "isPublic": false,
+  "items": [
+    {
+      "spotId": {{spot_id}},
+      "dayNumber": 1,
+      "sortOrder": 1,
+      "visitTime": "09:00",
+      "durationMinutes": 180,
+      "notes": "上午摘草莓，中午园区吃饭"
+    },
+    {
+      "spotId": {{spot_room}},
+      "dayNumber": 1,
+      "sortOrder": 2,
+      "visitTime": "15:00",
+      "notes": "下午入住民宿，晚上看星空"
+    },
+    {
+      "spotId": {{spot_id}},
+      "dayNumber": 2,
+      "sortOrder": 1,
+      "visitTime": "09:00",
+      "durationMinutes": 120,
+      "notes": "第二天上午再摘一波，带回家"
+    }
+  ]
+}
+
+> {%
+    client.global.set("route_id", response.body.data.id);
+    client.test("路线创建成功", function() {
+        client.assert(response.body.data.totalDays === 2);
+        client.assert(response.body.data.days.length === 2, "有2天的行程");
+        client.assert(response.body.data.days[0].spots.length === 2, "第一天2个景点");
+        client.assert(response.body.data.days[1].spots.length === 1, "第二天1个景点");
+        client.assert(response.body.data.isPublic === false, "默认私有");
+    });
+    client.log("✅ 路线ID: " + response.body.data.id);
+%}
+
+###
+
+### 5.2 查看路线详情
+GET http://localhost:8080/api/v1/tourism/routes/{{route_id}}
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("详情含景点信息", function() {
+        var day1 = response.body.data.days[0];
+        client.assert(day1.spots[0].spotName !== null);
+        client.assert(day1.date === "2026-03-20", "日期自动计算");
+    });
+%}
+
+###
+
+### 5.3 ❌ 私有路线其他人不能看
+GET http://localhost:8080/api/v1/tourism/routes/{{route_id}}
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("私有路线403", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 5.4 编辑路线 — 设为公开 + 修改行程
+PUT http://localhost:8080/api/v1/tourism/routes/{{route_id}}
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "title": "烟台周末两日游（推荐）",
+  "description": "采摘+民宿，亲测好评！",
+  "totalDays": 2,
+  "startDate": "2026-03-20",
+  "isPublic": true,
+  "items": [
+    {
+      "spotId": {{spot_id}},
+      "dayNumber": 1,
+      "sortOrder": 1,
+      "visitTime": "09:00",
+      "durationMinutes": 180,
+      "notes": "上午摘草莓"
+    },
+    {
+      "spotId": {{spot_room}},
+      "dayNumber": 2,
+      "sortOrder": 1,
+      "notes": "住一晚看星空"
+    }
+  ]
+}
+
+> {%
+    client.test("编辑成功且已公开", function() {
+        client.assert(response.body.data.isPublic === true);
+        client.assert(response.body.data.title.indexOf("推荐") >= 0);
+    });
+%}
+
+###
+
+### 5.5 查看公开推荐路线列表（不需要登录）
+GET http://localhost:8080/api/v1/tourism/routes/public?page=1&size=10
+
+> {%
+    client.test("公开路线可见", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### 5.6 商家复制这条路线
+POST http://localhost:8080/api/v1/tourism/routes/{{route_id}}/copy
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.global.set("route_copy", response.body.data.id);
+    client.test("复制成功", function() {
+        client.assert(response.body.data.title.indexOf("副本") >= 0);
+        client.assert(response.body.data.isPublic === false, "副本默认私有");
+    });
+%}
+
+###
+
+### 5.7 原路线引用数+1
+GET http://localhost:8080/api/v1/tourism/routes/{{route_id}}
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("引用数增加", function() {
+        client.assert(response.body.data.copyCount >= 1);
+    });
+%}
+
+###
+
+### 5.8 查看我的路线
+GET http://localhost:8080/api/v1/tourism/routes/mine?page=1&size=10
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("有我的路线", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### 5.9 删除副本路线
+DELETE http://localhost:8080/api/v1/tourism/routes/{{route_copy}}
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("删除成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### ==================== 6. 容量极限测试 ====================
+
+### 6.1 创建一个小容量票型（每日限3人）
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "name": "VIP体验票",
+  "description": "限量VIP，含专人导览",
+  "price": 288.00,
+  "category": "TICKET",
+  "dailyCapacity": 3,
+  "minQuantity": 1,
+  "maxQuantity": 3,
+  "advanceDays": 0
+}
+
+> {%
+    client.global.set("ticket_vip", response.body.data.id);
+%}
+
+###
+
+### 6.2 预约2张VIP票
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "ticketId": {{ticket_vip}},
+  "visitDate": "2026-04-01",
+  "quantity": 2,
+  "contactName": "小王",
+  "contactPhone": "13900001111"
+}
+
+> {%
+    client.global.set("booking_vip", response.body.data.id);
+    client.test("预约2张VIP", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 6.3 ❌ 再预约2张（超出容量，只剩1张）
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "ticketId": {{ticket_vip}},
+  "visitDate": "2026-04-01",
+  "quantity": 2,
+  "contactName": "商家",
+  "contactPhone": "13900002222"
+}
+
+> {%
+    client.test("容量不足被拦截", function() {
+        client.assert(response.body.code === 400);
+        client.assert(response.body.message.indexOf("余量不足") >= 0);
+    });
+%}
+
+###
+
+### 6.4 ✅ 预约1张（刚好用完容量）
+POST http://localhost:8080/api/v1/tourism/bookings
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "ticketId": {{ticket_vip}},
+  "visitDate": "2026-04-01",
+  "quantity": 1,
+  "contactName": "商家",
+  "contactPhone": "13900002222"
+}
+
+> {%
+    client.test("最后1张预约成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 6.5 查看余量 — 应为0
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets?date=2026-04-01
+
+> {%
+    client.test("VIP票已售罄", function() {
+        var vip = response.body.data.find(t => t.name === "VIP体验票");
+        client.assert(vip.remaining === 0, "余量为0");
+    });
+%}
+
+###
+
+### 6.6 取消后余量恢复
+PUT http://localhost:8080/api/v1/tourism/bookings/{{booking_vip}}/cancel
+Authorization: Bearer {{tourist_token}}
+
+###
+
+### 6.7 余量恢复验证
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_id}}/tickets?date=2026-04-01
+
+> {%
+    client.test("取消后余量恢复", function() {
+        var vip = response.body.data.find(t => t.name === "VIP体验票");
+        client.assert(vip.remaining === 2, "恢复2张");
+    });
+%}

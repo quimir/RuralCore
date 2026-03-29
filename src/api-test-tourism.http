@@ -1,0 +1,587 @@
+### ============================================================
+### 乡村振兴管理系统 — 旅游推广模块测试
+### 下载后重命名为 api-test-tourism.http 放到 IDEA 项目根目录
+### ============================================================
+
+
+### ==================== 0. 初始化登录 ====================
+
+### 0.1 管理员登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+> {%
+    client.global.set("admin_token", response.body.data.token);
+%}
+
+###
+
+### 0.2 注册商家
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "张三果园",
+  "role": "MERCHANT"
+}
+
+###
+
+### 0.3 注册游客
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "tourist01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "旅行者小王"
+}
+
+###
+
+### 0.4 商家登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("farmer_token", response.body.data.token);
+%}
+
+###
+
+### 0.5 游客登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "tourist01",
+  "password": "123456"
+}
+
+> {%
+    client.global.set("tourist_token", response.body.data.token);
+%}
+
+###
+
+### ==================== 1. 发布旅游项目 ====================
+
+### 1.1 商家发布景点（→ 待审核 PENDING）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "title": "张三生态采摘园",
+  "summary": "春摘草莓夏摘桃，秋收苹果冬赏梅，四季有果可摘",
+  "content": "## 园区介绍\n张三生态采摘园位于山东烟台牟平区，占地200亩...\n\n## 当季推荐\n- 🍓 草莓（12月-3月）\n- 🍑 桃子（6月-8月）\n- 🍎 苹果（9月-11月）",
+  "type": "PICKING_GARDEN",
+  "coverImage": "/images/picking-garden-cover.jpg",
+  "images": "[\"/images/pg1.jpg\", \"/images/pg2.jpg\", \"/images/pg3.jpg\"]",
+  "address": "山东省烟台市牟平区莒格庄镇",
+  "longitude": 121.6,
+  "latitude": 37.4,
+  "contactPhone": "0535-4567890",
+  "openingHours": "08:00-17:30（全年无休）",
+  "ticketPrice": 0,
+  "tags": "[\"亲子游\", \"采摘\", \"免费入园\", \"周末好去处\"]"
+}
+
+> {%
+    client.global.set("spot_picking", response.body.data.id);
+    client.test("发布成功且状态为PENDING", function() {
+        client.assert(response.body.data.status === "PENDING");
+    });
+    client.log("✅ 采摘园ID: " + response.body.data.id);
+%}
+
+###
+
+### 1.2 商家发布民宿
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "title": "云上山居·精品民宿",
+  "summary": "隐于山林间的田园民宿，推窗见山，枕星入梦",
+  "content": "## 民宿特色\n- 独栋小院，私密性好\n- 自家菜园，有机蔬菜\n- 观星露台\n\n## 房型\n- 标准间: ¥298/晚\n- 家庭套房: ¥498/晚\n- 星空房: ¥698/晚",
+  "type": "FARMSTAY",
+  "coverImage": "/images/farmstay-cover.jpg",
+  "address": "浙江省杭州市临安区太湖源镇白沙村",
+  "longitude": 119.7,
+  "latitude": 30.2,
+  "contactPhone": "13812345678",
+  "openingHours": "全年营业",
+  "ticketPrice": 298,
+  "tags": "[\"民宿\", \"田园\", \"观星\", \"情侣\"]"
+}
+
+> {%
+    client.global.set("spot_farmstay", response.body.data.id);
+%}
+
+###
+
+### 1.3 管理员直接发布（→ 直接 APPROVED）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "title": "古村落·非遗手工体验",
+  "summary": "体验传统竹编、草编、剪纸、制茶工艺，感受非遗文化魅力",
+  "content": "## 活动内容\n1. 竹编体验（1小时）\n2. 传统剪纸教学（40分钟）\n3. 手工制茶体验（1.5小时）\n4. 品茶+农家午餐",
+  "type": "FOLK_CULTURE",
+  "coverImage": "/images/folk-cover.jpg",
+  "address": "安徽省黄山市歙县深渡镇",
+  "openingHours": "周三至周日 09:00-16:00",
+  "ticketPrice": 128,
+  "tags": "[\"非遗\", \"手工\", \"亲子\", \"团建\"]"
+}
+
+> {%
+    client.global.set("spot_folk", response.body.data.id);
+    client.test("管理员发布直接APPROVED", function() {
+        client.assert(response.body.data.status === "APPROVED");
+    });
+%}
+
+###
+
+### 1.4 ❌ 游客不能发布（期望 403）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "title": "测试",
+  "summary": "测试",
+  "type": "SCENIC_SPOT"
+}
+
+> {%
+    client.test("游客不能发布", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 1.5 ❌ 商家重复发布同名项目（期望 400）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "title": "张三生态采摘园",
+  "summary": "再发一次",
+  "type": "PICKING_GARDEN",
+  "address": "另一个地址"
+}
+
+> {%
+    client.test("同名项目被拦截", function() {
+        client.assert(response.body.code === 400);
+        client.assert(response.body.message.indexOf("重复") >= 0, "提示包含'重复'");
+    });
+%}
+
+###
+
+### 1.6 ❌ 管理员发布同名+同地址项目（全局去重）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "title": "张三生态采摘园",
+  "summary": "管理员想发同一个",
+  "type": "PICKING_GARDEN",
+  "address": "山东省烟台市牟平区莒格庄镇"
+}
+
+> {%
+    client.test("全局同名同地址被拦截", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 1.7 ✅ 同名但不同地址可以发布（不同景区可能重名）
+POST http://localhost:8080/api/v1/tourism/spots
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "title": "田园风光生态采摘园",
+  "summary": "杭州的采摘园",
+  "type": "PICKING_GARDEN",
+  "address": "浙江省杭州市余杭区"
+}
+
+> {%
+    client.global.set("spot_different", response.body.data.id);
+    client.test("不同名可以发布", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### ==================== 2. 管理员审核 ====================
+
+### 2.1 查看待审核列表
+GET http://localhost:8080/api/v1/admin/tourism/spots?status=PENDING&page=1&size=10
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("有待审核项目", function() {
+        client.assert(response.body.data.records.length >= 2);
+    });
+%}
+
+###
+
+### 2.2 审核通过 — 采摘园
+PUT http://localhost:8080/api/v1/admin/tourism/spots/{{spot_picking}}/audit
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "approved": true
+}
+
+> {%
+    client.test("审核通过", function() {
+        client.assert(response.body.data.status === "APPROVED");
+    });
+%}
+
+###
+
+### 2.3 审核拒绝 — 民宿（附理由）
+PUT http://localhost:8080/api/v1/admin/tourism/spots/{{spot_farmstay}}/audit
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "approved": false,
+  "reason": "请补充营业执照和消防安全证明"
+}
+
+> {%
+    client.test("审核拒绝", function() {
+        client.assert(response.body.data.status === "REJECTED");
+        client.assert(response.body.data.rejectReason !== null);
+    });
+%}
+
+###
+
+### ==================== 3. 游客浏览（公开接口，无需Token） ====================
+
+### 3.1 景点列表（只能看到 APPROVED 的）
+GET http://localhost:8080/api/v1/tourism/spots?page=1&size=10
+
+> {%
+    client.test("列表只有已审核的", function() {
+        var records = response.body.data.records;
+        records.forEach(function(r) {
+            client.assert(r.status === "APPROVED", "应全部是APPROVED");
+        });
+    });
+%}
+
+###
+
+### 3.2 按类型筛选 — 采摘园
+GET http://localhost:8080/api/v1/tourism/spots?type=PICKING_GARDEN&page=1&size=10
+
+###
+
+### 3.3 关键词搜索
+GET http://localhost:8080/api/v1/tourism/spots?keyword=非遗&page=1&size=10
+
+###
+
+### 3.4 价格区间 + 排序
+GET http://localhost:8080/api/v1/tourism/spots?maxPrice=0&sort=views_desc&page=1&size=10
+
+###
+
+### 3.5 景点详情（浏览量+1）
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}
+
+> {%
+    client.test("详情包含发布者信息", function() {
+        client.assert(response.body.data.publisherName !== null);
+        client.assert(response.body.data.viewCount >= 1, "浏览量已+1");
+    });
+%}
+
+###
+
+### 3.6 再看一次（浏览量应+1）
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}
+
+> {%
+    client.test("浏览量再+1", function() {
+        client.assert(response.body.data.viewCount >= 2);
+    });
+%}
+
+###
+
+### 3.7 ❌ 被拒绝的项目游客看不到（期望 404）
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_farmstay}}
+
+> {%
+    client.test("被拒绝的不可见", function() {
+        client.assert(response.body.code === 404);
+    });
+%}
+
+###
+
+### ==================== 4. 评论 ====================
+
+### 4.1 游客发表评论
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "rating": 5,
+  "content": "带孩子去摘了草莓，非常新鲜，老板很热情！推荐！",
+  "images": "[\"/img/review-1.jpg\", \"/img/review-2.jpg\"]"
+}
+
+> {%
+    client.global.set("review_id", response.body.data.id);
+    client.test("评论成功", function() {
+        client.assert(response.body.data.rating === 5);
+        client.assert(response.body.data.nickname === "旅行者小王");
+    });
+%}
+
+###
+
+### 4.2 商家也评论一下
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_folk}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "rating": 4,
+  "content": "竹编体验很有意思，午餐也好吃。就是停车不太方便。"
+}
+
+###
+
+### 4.3 ❌ 重复评论（期望 400）
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}/reviews
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "rating": 4,
+  "content": "再评一次"
+}
+
+> {%
+    client.test("不能重复评论", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 4.4 查看评论列表（公开）
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}/reviews?page=1&size=10
+
+> {%
+    client.test("有评论", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### 4.5 查看采摘园详情（评分应已更新）
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}
+
+> {%
+    client.test("评分已更新", function() {
+        client.assert(response.body.data.reviewCount >= 1);
+        client.assert(response.body.data.avgRating > 0);
+    });
+%}
+
+###
+
+### 4.6 游客删除自己的评论
+DELETE http://localhost:8080/api/v1/tourism/reviews/{{review_id}}
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("删除评论成功", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### ==================== 5. 收藏 ====================
+
+### 5.1 游客收藏采摘园
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}/favorite
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("收藏成功", function() {
+        client.assert(response.body.data.favorited === true);
+    });
+%}
+
+###
+
+### 5.2 游客收藏非遗体验
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_folk}}/favorite
+Authorization: Bearer {{tourist_token}}
+
+###
+
+### 5.3 查看我的收藏列表
+GET http://localhost:8080/api/v1/tourism/favorites?page=1&size=10
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("有2个收藏", function() {
+        client.assert(response.body.data.records.length === 2);
+    });
+%}
+
+###
+
+### 5.4 再次点击收藏 → 取消收藏（toggle）
+POST http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}/favorite
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("取消收藏", function() {
+        client.assert(response.body.data.favorited === false);
+    });
+%}
+
+###
+
+### 5.5 查看收藏列表（应只剩1个）
+GET http://localhost:8080/api/v1/tourism/favorites?page=1&size=10
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("剩1个收藏", function() {
+        client.assert(response.body.data.records.length === 1);
+    });
+%}
+
+###
+
+### 5.6 登录用户看详情时返回收藏状态
+GET http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("返回收藏状态", function() {
+        client.assert(response.body.data.favorited === false, "已取消收藏");
+    });
+%}
+
+###
+
+### ==================== 6. 发布者管理自己的项目 ====================
+
+### 6.1 查看我发布的项目
+GET http://localhost:8080/api/v1/tourism/spots/mine?page=1&size=10
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("能看到所有状态", function() {
+        client.assert(response.body.data.records.length >= 2);
+    });
+%}
+
+###
+
+### 6.2 商家编辑被拒绝的民宿（补充信息后重新待审核）
+PUT http://localhost:8080/api/v1/tourism/spots/{{spot_farmstay}}
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "title": "云上山居·精品民宿（已补充证照）",
+  "summary": "隐于山林间的田园民宿，推窗见山，枕星入梦。已取得营业执照和消防安全证明。",
+  "content": "## 证照信息\n- 营业执照编号: 330xxxxx\n- 消防安全证明: 已通过\n\n## 民宿特色\n...",
+  "type": "FARMSTAY",
+  "address": "浙江省杭州市临安区太湖源镇白沙村",
+  "ticketPrice": 298,
+  "openingHours": "全年营业"
+}
+
+> {%
+    client.test("编辑后重新待审核", function() {
+        client.assert(response.body.data.status === "PENDING");
+    });
+%}
+
+###
+
+### 6.3 ❌ 游客不能编辑别人的项目（期望 403）
+PUT http://localhost:8080/api/v1/tourism/spots/{{spot_picking}}
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "title": "被篡改",
+  "summary": "test",
+  "type": "SCENIC_SPOT"
+}
+
+> {%
+    client.test("游客不能编辑", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### ==================== 7. Swagger UI 验证 ====================
+### 在浏览器中打开以下地址验证 Swagger 是否正常:
+###   http://localhost:8080/swagger-ui.html
+###   http://localhost:8080/swagger-ui/index.html
+###   http://localhost:8080/v3/api-docs
+
+### 7.1 OpenAPI JSON 文档（应返回 JSON）
+GET http://localhost:8080/v3/api-docs
+
+> {%
+    client.test("OpenAPI 文档可访问", function() {
+        client.assert(response.status === 200);
+    });
+%}

@@ -1,0 +1,893 @@
+### ============================================================
+### 乡村振兴管理系统 — 农村金融服务模块 测试
+### 下载后重命名为 api-test-finance.http
+### ============================================================
+### 测试账号（DataInitializer 自动创建）:
+###   admin / admin123           管理员
+###   bank01 / 123456            金融服务商（农村信用社）
+###   insure01 / 123456          保险提供商（人保财险）
+###   farmer01 / 123456          农户（需先注册）
+###   tourist01 / 123456         游客（需先注册）
+### ============================================================
+
+
+### ==================== 0. 初始化登录 ====================
+
+### 0.1 管理员登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{ "username": "admin", "password": "admin123" }
+
+> {%
+    client.global.set("admin_token", response.body.data.token);
+%}
+
+###
+
+### 0.2 注册农户（如果不存在）
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "farmer01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "张老板",
+  "role": "FARMER",
+  "phone": "13811112222"
+}
+
+###
+
+### 0.3 农户登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{ "username": "farmer01", "password": "123456" }
+
+> {%
+    client.global.set("farmer_token", response.body.data.token);
+    client.global.set("farmer_id", response.body.data.userInfo.id);
+    client.log("✅ 农户ID: " + response.body.data.userInfo.id);
+%}
+
+###
+
+### 0.4 金融服务商登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{ "username": "bank01", "password": "123456" }
+
+> {%
+    client.global.set("bank_token", response.body.data.token);
+%}
+
+###
+
+### 0.5 保险提供商登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{ "username": "insure01", "password": "123456" }
+
+> {%
+    client.global.set("insure_token", response.body.data.token);
+%}
+
+###
+
+### 0.6 注册游客（用于权限测试）
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "tourist01",
+  "password": "123456",
+  "confirmPassword": "123456",
+  "nickname": "游客小王",
+  "role": "TOURIST"
+}
+
+###
+
+### 0.7 游客登录
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{ "username": "tourist01", "password": "123456" }
+
+> {%
+    client.global.set("tourist_token", response.body.data.token);
+%}
+
+###
+
+
+### ==================== 1. 贷款产品（金融服务商） ====================
+
+### 1.1 ✅ 金融服务商发布贷款产品 — 春耕贷
+POST http://localhost:8080/api/v1/finance/loan-products
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "name": "春耕贷",
+  "type": "CROP_LOAN",
+  "description": "面向种植户的春耕备耕专项贷款，利率优惠",
+  "minAmount": 10000,
+  "maxAmount": 200000,
+  "annualRate": 4.35,
+  "minTermMonths": 3,
+  "maxTermMonths": 12,
+  "minCreditScore": 40,
+  "requirements": "种植面积10亩以上，有6个月以上平台经营记录",
+  "repaymentMethod": "等额本息，到期一次还本"
+}
+
+> {%
+    client.global.set("loan_product_1", response.body.data.id);
+    client.test("贷款产品发布成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.providerName === "农村信用社牟平支行");
+    });
+%}
+
+###
+
+### 1.2 ✅ 发布设备购置贷（高门槛）
+POST http://localhost:8080/api/v1/finance/loan-products
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "name": "设备购置贷",
+  "type": "EQUIPMENT_LOAN",
+  "description": "用于购买农机具、冷链设施等大型设备",
+  "minAmount": 50000,
+  "maxAmount": 1000000,
+  "annualRate": 5.60,
+  "minTermMonths": 12,
+  "maxTermMonths": 60,
+  "minCreditScore": 70,
+  "requirements": "年营收10万以上，信用评分≥70",
+  "repaymentMethod": "等额本息，按月还款"
+}
+
+> {%
+    client.global.set("loan_product_2", response.body.data.id);
+%}
+
+###
+
+### 1.3 ❌ 游客发布贷款产品（403）
+POST http://localhost:8080/api/v1/finance/loan-products
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "name": "测试",
+  "type": "CROP_LOAN",
+  "minAmount": 1000,
+  "maxAmount": 10000,
+  "annualRate": 3.0,
+  "minTermMonths": 3,
+  "maxTermMonths": 12
+}
+
+> {%
+    client.test("游客不能发布贷款产品", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 1.4 ❌ 农户发布贷款产品（403）
+POST http://localhost:8080/api/v1/finance/loan-products
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "name": "测试",
+  "type": "CROP_LOAN",
+  "minAmount": 1000,
+  "maxAmount": 10000,
+  "annualRate": 3.0,
+  "minTermMonths": 3,
+  "maxTermMonths": 12
+}
+
+> {%
+    client.test("农户不能发布贷款产品", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 1.5 ❌ 保险提供商发布贷款产品（403 — 跨界）
+POST http://localhost:8080/api/v1/finance/loan-products
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "name": "测试",
+  "type": "CROP_LOAN",
+  "minAmount": 1000,
+  "maxAmount": 10000,
+  "annualRate": 3.0,
+  "minTermMonths": 3,
+  "maxTermMonths": 12
+}
+
+> {%
+    client.test("保险商不能发布贷款产品", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+
+### ==================== 2. 农户浏览 + 查看信用 + 申请贷款 ====================
+
+### 2.1 农户浏览贷款产品
+GET http://localhost:8080/api/v1/finance/loan-products?page=1&size=10
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("能看到贷款产品", function() {
+        client.assert(response.body.data.records.length >= 2);
+    });
+%}
+
+###
+
+### 2.2 农户查看自己的财务看板
+GET http://localhost:8080/api/v1/finance/dashboard
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("看板有数据", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.creditReport !== null, "含信用报告");
+        client.assert(response.body.data.suggestions !== null, "含经营建议");
+    });
+    client.log("✅ 信用评分: " + response.body.data.creditReport.totalScore);
+    client.log("✅ 信用等级: " + response.body.data.creditReport.grade);
+%}
+
+###
+
+### 2.3 农户查看信用报告
+GET http://localhost:8080/api/v1/finance/credit-report
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.global.set("farmer_credit", response.body.data.totalScore);
+    client.test("信用报告完整", function() {
+        client.assert(response.body.data.historyScore !== undefined);
+        client.assert(response.body.data.tradeScore !== undefined);
+        client.assert(response.body.data.riskScore !== undefined);
+    });
+%}
+
+###
+
+### 2.4 ❌ 游客查看财务看板（403）
+GET http://localhost:8080/api/v1/finance/dashboard
+Authorization: Bearer {{tourist_token}}
+
+> {%
+    client.test("游客看不到财务看板", function() {
+        client.assert(response.body.code !== 200);
+    });
+%}
+
+###
+
+### 2.5 ✅ 农户申请春耕贷
+POST http://localhost:8080/api/v1/finance/loan-applications
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "productId": {{loan_product_1}},
+  "applyAmount": 50000,
+  "applyTermMonths": 6,
+  "purpose": "购买春季种子、化肥、农药，计划种植50亩小麦"
+}
+
+> {%
+    client.global.set("loan_app_1", response.body.data.id);
+    client.test("贷款申请成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.status === "SUBMITTED");
+        client.assert(response.body.data.creditScoreSnapshot !== null, "附上了信用快照");
+    });
+%}
+
+###
+
+### 2.6 ❌ 重复申请同一产品
+POST http://localhost:8080/api/v1/finance/loan-applications
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "productId": {{loan_product_1}},
+  "applyAmount": 30000,
+  "applyTermMonths": 3,
+  "purpose": "再申请一次"
+}
+
+> {%
+    client.test("重复申请被拦截", function() {
+        client.assert(response.body.code === 400);
+        client.assert(response.body.message.indexOf("进行中") >= 0);
+    });
+%}
+
+###
+
+### 2.7 ❌ 游客申请贷款（403）
+POST http://localhost:8080/api/v1/finance/loan-applications
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "productId": {{loan_product_1}},
+  "applyAmount": 10000,
+  "applyTermMonths": 3,
+  "purpose": "测试"
+}
+
+> {%
+    client.test("游客不能申请贷款", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+
+### ==================== 3. 金融服务商审核贷款 ====================
+
+### 3.1 查看待审核列表
+GET http://localhost:8080/api/v1/finance/loan-applications/review?status=SUBMITTED&page=1&size=10
+Authorization: Bearer {{bank_token}}
+
+> {%
+    client.test("有待审核申请", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### 3.2 ✅ 批准贷款（可调整金额和利率）
+PUT http://localhost:8080/api/v1/finance/loan-applications/{{loan_app_1}}/review
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "approved": true,
+  "comment": "经审核，信用良好，批准放款",
+  "approvedAmount": 45000,
+  "approvedRate": 4.20
+}
+
+> {%
+    client.test("贷款已批准", function() {
+        client.assert(response.body.data.status === "APPROVED");
+        client.assert(response.body.data.approvedAmount === 45000);
+    });
+%}
+
+###
+
+### 3.3 查看审核后的状态
+GET http://localhost:8080/api/v1/finance/loan-applications/mine?page=1&size=10
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("农户能看到审核结果", function() {
+        var app = response.body.data.records[0];
+        client.assert(app.status === "APPROVED");
+        client.assert(app.approvedRate === 4.20, "利率可能被调整");
+    });
+%}
+
+###
+
+
+### ==================== 4. 保险产品（保险提供商） ====================
+
+### 4.1 ✅ 保险商发布水稻种植险
+POST http://localhost:8080/api/v1/finance/insurance-products
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "name": "水稻种植险",
+  "type": "CROP",
+  "description": "保障水稻种植期间因自然灾害导致的减产损失",
+  "premium": 18.00,
+  "premiumUnit": "亩",
+  "coverageAmount": 800.00,
+  "coverageMonths": 6,
+  "coverageScope": "洪涝、干旱、台风、冰雹、病虫害导致的减产",
+  "claimConditions": "减产超过30%可申请理赔，需提供村委会出具的灾害证明"
+}
+
+> {%
+    client.global.set("ins_product_1", response.body.data.id);
+    client.test("保险产品发布成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.providerName === "中国人保财险烟台分公司");
+    });
+%}
+
+###
+
+### 4.2 发布生猪养殖险
+POST http://localhost:8080/api/v1/finance/insurance-products
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "name": "生猪养殖险",
+  "type": "LIVESTOCK",
+  "description": "保障生猪养殖中因疫病死亡造成的经济损失",
+  "premium": 60.00,
+  "premiumUnit": "头",
+  "coverageAmount": 1500.00,
+  "coverageMonths": 12,
+  "coverageScope": "猪瘟、蓝耳病等重大疫病导致的死亡",
+  "claimConditions": "需提供兽医诊断证明和无害化处理证明"
+}
+
+> {%
+    client.global.set("ins_product_2", response.body.data.id);
+%}
+
+###
+
+### 4.3 ❌ 金融服务商发布保险产品（403 — 跨界）
+POST http://localhost:8080/api/v1/finance/insurance-products
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "name": "测试",
+  "type": "CROP",
+  "premium": 10,
+  "premiumUnit": "亩",
+  "coverageAmount": 100,
+  "coverageMonths": 6
+}
+
+> {%
+    client.test("金融服务商不能发布保险产品", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+
+### ==================== 5. 农户投保 ====================
+
+### 5.1 ✅ 农户投保水稻种植险（50亩）
+POST http://localhost:8080/api/v1/finance/policies
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "productId": {{ins_product_1}},
+  "quantity": 50,
+  "effectiveDate": "2026-03-15"
+}
+
+> {%
+    client.global.set("policy_1", response.body.data.id);
+    client.global.set("policy_no_1", response.body.data.policyNo);
+    client.test("投保成功", function() {
+        client.assert(response.body.data.totalPremium === 900.00, "18×50=900");
+        client.assert(response.body.data.totalCoverage === 40000.00, "800×50=40000");
+        client.assert(response.body.data.status === "PENDING_PAYMENT");
+    });
+    client.log("✅ 保单号: " + response.body.data.policyNo);
+%}
+
+###
+
+### 5.2 支付保费
+PUT http://localhost:8080/api/v1/finance/policies/{{policy_1}}/pay
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("保费支付成功 → ACTIVE", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+### 5.3 ❌ 游客投保（403）
+POST http://localhost:8080/api/v1/finance/policies
+Content-Type: application/json
+Authorization: Bearer {{tourist_token}}
+
+{
+  "productId": {{ins_product_1}},
+  "quantity": 10,
+  "effectiveDate": "2026-04-01"
+}
+
+> {%
+    client.test("游客不能投保", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 5.4 查看我的保单
+GET http://localhost:8080/api/v1/finance/policies/mine?page=1&size=10
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("有保单记录", function() {
+        client.assert(response.body.data.records.length >= 1);
+        client.assert(response.body.data.records[0].status === "ACTIVE");
+    });
+%}
+
+###
+
+
+### ==================== 6. 理赔流程 ====================
+
+### 6.1 ✅ 农户报案
+POST http://localhost:8080/api/v1/finance/claims
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "policyId": {{policy_1}},
+  "incidentDate": "2026-06-20",
+  "incidentDesc": "6月20日暴雨导致30亩水稻倒伏，预估减产60%",
+  "claimAmount": 24000,
+  "evidenceImages": "[\"https://example.com/photo1.jpg\", \"https://example.com/photo2.jpg\"]"
+}
+
+> {%
+    client.global.set("claim_1", response.body.data.id);
+    client.test("理赔报案成功", function() {
+        client.assert(response.body.data.status === "SUBMITTED");
+    });
+%}
+
+###
+
+### 6.2 ❌ 索赔超过保额
+POST http://localhost:8080/api/v1/finance/claims
+Content-Type: application/json
+Authorization: Bearer {{farmer_token}}
+
+{
+  "policyId": {{policy_1}},
+  "incidentDate": "2026-07-01",
+  "incidentDesc": "测试超额",
+  "claimAmount": 50000
+}
+
+> {%
+    client.test("不能有重复理赔", function() {
+        client.assert(response.body.code === 400);
+    });
+%}
+
+###
+
+### 6.3 保险商查看待审核理赔
+GET http://localhost:8080/api/v1/finance/claims/review?status=SUBMITTED&page=1&size=10
+Authorization: Bearer {{insure_token}}
+
+> {%
+    client.test("有待审核理赔", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+### 6.4 ✅ 保险商审核理赔 — 批准（定损18000，赔付18000）
+PUT http://localhost:8080/api/v1/finance/claims/{{claim_1}}/review
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "approved": true,
+  "comment": "经现场勘查核实，30亩倒伏属实。定损18000元，全额赔付。",
+  "assessedAmount": 18000,
+  "payoutAmount": 18000
+}
+
+> {%
+    client.test("理赔已批准", function() {
+        client.assert(response.body.data.status === "APPROVED");
+        client.assert(response.body.data.payoutAmount === 18000);
+    });
+%}
+
+###
+
+### 6.5 ❌ 金融服务商审核理赔（403 — 跨界）
+PUT http://localhost:8080/api/v1/finance/claims/{{claim_1}}/review
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "approved": true,
+  "comment": "测试跨界",
+  "assessedAmount": 1000,
+  "payoutAmount": 1000
+}
+
+> {%
+    client.test("金融服务商不能审核理赔", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+
+### ==================== 7. 财务看板（投保后再看） ====================
+
+### 7.1 农户再查财务看板 — 应有保障数据
+GET http://localhost:8080/api/v1/finance/dashboard
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("看板含保障数据", function() {
+        client.assert(response.body.data.activePolicies >= 0, "有保单统计");
+        client.assert(response.body.data.suggestions.length >= 1, "有经营建议");
+    });
+    client.log("📊 月度趋势: " + response.body.data.monthlyTrend.length + " 个月");
+    client.log("💡 经营建议: " + response.body.data.suggestions.length + " 条");
+    response.body.data.suggestions.forEach(function(s, i) {
+        client.log("  建议" + (i+1) + ": " + s.substring(0, 50) + "...");
+    });
+%}
+
+###
+
+### 7.2 ❌ 金融服务商直接看农户看板（403 — 隐私保护）
+GET http://localhost:8080/api/v1/finance/dashboard/{{farmer_id}}
+Authorization: Bearer {{bank_token}}
+
+> {%
+    client.test("金融商不能直接看农户看板", function() {
+        client.assert(response.body.code === 403);
+    });
+%}
+
+###
+
+### 7.3 ✅ 管理员可查看任何农户的看板
+GET http://localhost:8080/api/v1/finance/dashboard/{{farmer_id}}
+Authorization: Bearer {{admin_token}}
+
+> {%
+    client.test("管理员可查看", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+
+###
+
+
+### ==================== 8. 权限矩阵验证 ====================
+
+### 8.1 ❌ 游客访问任何金融接口（需登录）
+GET http://localhost:8080/api/v1/finance/loan-products
+
+> {%
+    client.test("未登录被拒绝", function() {
+        client.assert(response.body.code === 401);
+    });
+%}
+
+###
+
+### 8.2 金融服务商查看自己的产品
+GET http://localhost:8080/api/v1/finance/loan-products/mine?page=1&size=10
+Authorization: Bearer {{bank_token}}
+
+> {%
+    client.test("金融商可看自己的产品", function() {
+        client.assert(response.body.data.records.length >= 2);
+    });
+%}
+
+###
+
+### 8.3 保险商查看自己的产品
+GET http://localhost:8080/api/v1/finance/insurance-products/mine?page=1&size=10
+Authorization: Bearer {{insure_token}}
+
+> {%
+    client.test("保险商可看自己的产品", function() {
+        client.assert(response.body.data.records.length >= 2);
+    });
+%}
+
+###
+
+### 8.4 农户查看我的理赔
+GET http://localhost:8080/api/v1/finance/claims/mine?page=1&size=10
+Authorization: Bearer {{farmer_token}}
+
+> {%
+    client.test("农户能看理赔列表", function() {
+        client.assert(response.body.data.records.length >= 1);
+    });
+%}
+
+###
+
+
+### ==================== 9. 部分更新（PATCH）测试 ====================
+
+### 9.1 ✅ PATCH 只改信用门槛（40→35）
+PATCH http://localhost:8080/api/v1/finance/loan-products/{{loan_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "minCreditScore": 35
+}
+
+> {%
+    client.test("只改信用门槛成功", function() {
+        client.assert(response.body.code === 200);
+        client.assert(response.body.data.minCreditScore === 35, "门槛降到35");
+        client.assert(response.body.data.name === "春耕贷", "名字没变");
+        client.assert(response.body.data.annualRate == 4.35, "利率没变");
+    });
+%}
+
+###
+
+### 9.2 ✅ PATCH 只改利率
+PATCH http://localhost:8080/api/v1/finance/loan-products/{{loan_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "annualRate": 3.85
+}
+
+> {%
+    client.test("只改利率成功", function() {
+        client.assert(response.body.data.annualRate == 3.85, "利率更新");
+        client.assert(response.body.data.minCreditScore === 35, "门槛保持35");
+    });
+%}
+
+###
+
+### 9.3 ✅ PATCH 同时改多个字段
+PATCH http://localhost:8080/api/v1/finance/loan-products/{{loan_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "minAmount": 5000,
+  "maxAmount": 300000,
+  "requirements": "种植面积5亩以上即可申请（门槛已降低）"
+}
+
+> {%
+    client.test("多字段同时更新", function() {
+        client.assert(response.body.data.minAmount === 5000);
+        client.assert(response.body.data.maxAmount === 300000);
+        client.assert(response.body.data.annualRate == 3.85, "利率仍然是上次改的");
+    });
+%}
+
+###
+
+### 9.4 ✅ PUT 全量更新也不强制所有字段了
+PUT http://localhost:8080/api/v1/finance/loan-products/{{loan_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{bank_token}}
+
+{
+  "minCreditScore": 30
+}
+
+> {%
+    client.test("PUT也支持部分更新", function() {
+        client.assert(response.body.data.minCreditScore === 30);
+        client.assert(response.body.data.name === "春耕贷", "名字保持");
+    });
+%}
+
+###
+
+### 9.5 ✅ PATCH 保险产品 — 只改保费
+PATCH http://localhost:8080/api/v1/finance/insurance-products/{{ins_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "premium": 15.00
+}
+
+> {%
+    client.test("保险产品部分更新成功", function() {
+        client.assert(response.body.data.premium == 15.00, "保费降为15");
+        client.assert(response.body.data.name === "水稻种植险", "名字没变");
+        client.assert(response.body.data.coverageAmount == 800, "保额没变");
+    });
+%}
+
+###
+
+### 9.6 ✅ PATCH 保险产品 — 改保障范围
+PATCH http://localhost:8080/api/v1/finance/insurance-products/{{ins_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "coverageScope": "洪涝、干旱、台风、冰雹、病虫害、霜冻导致的减产（新增霜冻保障）"
+}
+
+> {%
+    client.test("保障范围更新成功", function() {
+        client.assert(response.body.data.coverageScope.indexOf("霜冻") >= 0);
+        client.assert(response.body.data.premium == 15.00, "保费保持上次修改的值");
+    });
+%}
+
+###
+
+### 9.7 ❌ PATCH 改名冲突（改成已有的名字）
+PATCH http://localhost:8080/api/v1/finance/insurance-products/{{ins_product_2}}
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "name": "水稻种植险"
+}
+
+> {%
+    client.test("重名被拦截", function() {
+        client.assert(response.body.code === 400);
+        client.assert(response.body.message.indexOf("同名") >= 0);
+    });
+%}
+
+###
+
+### 9.8 ✅ PATCH 改成自己原来的名字（不算冲突）
+PATCH http://localhost:8080/api/v1/finance/insurance-products/{{ins_product_1}}
+Content-Type: application/json
+Authorization: Bearer {{insure_token}}
+
+{
+  "name": "水稻种植险"
+}
+
+> {%
+    client.test("改回自己的名字不冲突", function() {
+        client.assert(response.body.code === 200);
+    });
+%}
+

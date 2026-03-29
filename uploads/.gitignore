@@ -1,0 +1,4 @@
+# 上传的文件不纳入版本控制
+*
+!.gitignore
+!.gitkeep
