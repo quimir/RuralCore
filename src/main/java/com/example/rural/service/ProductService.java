@@ -4,6 +4,8 @@ import com.example.rural.common.PageResult;
 import com.example.rural.dto.request.ProductQueryRequest;
 import com.example.rural.dto.request.ProductRequest;
 import com.example.rural.dto.response.ProductCategoryResponse;
+import com.example.rural.dto.request.ProductImageRequest;
+import com.example.rural.dto.response.ProductImageResponse;
 import com.example.rural.dto.response.ProductResponse;
 
 import java.util.List;
@@ -74,4 +76,18 @@ public interface ProductService {
 
     /** 添加分类（管理员） */
     ProductCategoryResponse createCategory(String name, Long parentId, String icon);
+
+    // ==================== 产品详情图片 ====================
+
+    /** 为产品添加详情图片（仅发布者） */
+    ProductImageResponse addProductImage(Long productId, ProductImageRequest request, Long currentUserId);
+
+    /** 获取产品的所有详情图片 */
+    List<ProductImageResponse> getProductImages(Long productId);
+
+    /** 删除产品详情图片（仅发布者） */
+    void deleteProductImage(Long productId, Long imageId, Long currentUserId);
+
+    /** 批量设置产品详情图片（替换所有现有图片） */
+    List<ProductImageResponse> setProductImages(Long productId, List<ProductImageRequest> images, Long currentUserId);
 }

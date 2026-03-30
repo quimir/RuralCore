@@ -70,3 +70,4 @@ logging:
 # ==================== 文件上传存储配置 ====================
 file:
   upload-dir: uploads              # 上传文件存储目录（相对于项目根目录）
+  local-cache-dir: local-cache     # 本地图片缓存目录（离线场景使用）

@@ -56,6 +56,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/categories").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/tags").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products/{id}/images").permitAll()
 
                         // ---- 公开: 旅游浏览 ----
                         .requestMatchers(HttpMethod.GET, "/api/v1/tourism/spots").permitAll()
@@ -83,8 +84,9 @@ public class SecurityConfig {
                                 "/webjars/**"
                         ).permitAll()
 
-                        // ---- 公开: 上传文件的静态资源访问 ----
+                        // ---- 公开: 上传文件 & 本地缓存的静态资源访问 ----
                         .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers("/local-cache/**").permitAll()
 
                         // ---- 管理员专属 ----
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")

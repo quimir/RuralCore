@@ -24,6 +24,9 @@ public class WebConfig implements WebMvcConfigurer {
     @Value("${file.upload-dir:uploads}")
     private String uploadDir;
 
+    @Value("${file.local-cache-dir:local-cache}")
+    private String localCacheDir;
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         // API 接口跨域
@@ -39,6 +42,12 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOriginPatterns("http://localhost:*")
                 .allowedMethods("GET")
                 .maxAge(86400);  // 静态资源缓存24小时
+
+        // 本地缓存静态资源跨域
+        registry.addMapping("/local-cache/**")
+                .allowedOriginPatterns("http://localhost:*")
+                .allowedMethods("GET")
+                .maxAge(86400);
     }
 
     /**
@@ -55,5 +64,11 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(absolutePath)
                 .setCachePeriod(3600);  // 浏览器缓存1小时
+
+        // 本地缓存目录映射: /local-cache/** → local-cache/
+        String cacheAbsolutePath = Paths.get(localCacheDir).toAbsolutePath().toUri().toString();
+        registry.addResourceHandler("/local-cache/**")
+                .addResourceLocations(cacheAbsolutePath)
+                .setCachePeriod(3600);
     }
 }

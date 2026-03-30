@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 农产品响应
@@ -47,4 +48,7 @@ public class ProductResponse {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** 产品详情图片列表（仅在详情接口中返回） */
+    private List<ProductImageResponse> detailImages;
 }
