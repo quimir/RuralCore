@@ -1,0 +1,54 @@
+server:
+  port: 0  # 随机端口
+
+spring:
+  application:
+    name: rural-revitalization-test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MYSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+  data:
+    redis:
+      repositories:
+        enabled: false
+
+jwt:
+  secret: YourSuperSecretKeyForJwtTokenGenerationMustBeAtLeast256BitsLong!!
+  expiration: 86400000
+
+springdoc:
+  api-docs:
+    enabled: false
+
+logging:
+  level:
+    com.example.rural: warn
+    org.hibernate.SQL: warn
+
+file:
+  upload-dir: target/test-uploads
+  local-cache-dir: target/test-local-cache

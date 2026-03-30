@@ -1,15 +1,19 @@
 package com.example.rural.service.impl;
 
 import com.example.rural.common.PageResult;
+import com.example.rural.dto.request.ProductImageRequest;
 import com.example.rural.dto.request.ProductQueryRequest;
 import com.example.rural.dto.request.ProductRequest;
 import com.example.rural.dto.response.ProductCategoryResponse;
+import com.example.rural.dto.response.ProductImageResponse;
 import com.example.rural.dto.response.ProductResponse;
 import com.example.rural.entity.Product;
 import com.example.rural.entity.ProductCategory;
+import com.example.rural.entity.ProductImage;
 import com.example.rural.entity.User;
 import com.example.rural.exception.BusinessException;
 import com.example.rural.repository.ProductCategoryRepository;
+import com.example.rural.repository.ProductImageRepository;
 import com.example.rural.repository.ProductRepository;
 import com.example.rural.repository.UserRepository;
 import com.example.rural.service.ProductService;
@@ -47,6 +51,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
     private final ProductCategoryRepository categoryRepository;
+    private final ProductImageRepository productImageRepository;
     private final UserRepository userRepository;
 
     // ======================== 产品 CRUD ========================
@@ -229,11 +234,16 @@ public class ProductServiceImpl implements ProductService {
 
     /**
      * 获取产品详情（公开接口）
+     * 包含详情图片列表
      */
     @Override
     public ProductResponse getProductById(Long productId) {
         Product product = findProductOrThrow(productId);
-        return toProductResponse(product);
+        ProductResponse response = toProductResponse(product);
+        // 附带详情图片
+        List<ProductImage> images = productImageRepository.findByProductIdOrderBySortOrderAsc(productId);
+        response.setDetailImages(images.stream().map(this::toImageResponse).toList());
+        return response;
     }
 
     /**
@@ -469,5 +479,114 @@ public class ProductServiceImpl implements ProductService {
         } else if (product.getStatus() == Product.Status.SOLD_OUT) {
             product.setStatus(Product.Status.ON_SALE);
         }
+    }
+
+    // ======================== 产品详情图片 ========================
+
+    @Override
+    @Transactional
+    public ProductImageResponse addProductImage(Long productId, ProductImageRequest request, Long currentUserId) {
+        Product product = findProductOrThrow(productId);
+        if (!product.getSellerId().equals(currentUserId)) {
+            throw new BusinessException(403, "只能为自己发布的产品添加图片");
+        }
+
+        // 限制每个产品最多20张详情图
+        long count = productImageRepository.countByProductId(productId);
+        if (count >= 20) {
+            throw new BusinessException("每个产品最多上传20张详情图片");
+        }
+
+        ProductImage image = ProductImage.builder()
+                .productId(productId)
+                .imageUrl(request.getImageUrl())
+                .caption(request.getCaption())
+                .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
+                .imageType(parseImageType(request.getImageType()))
+                .build();
+
+        ProductImage saved = productImageRepository.save(image);
+        log.info("产品详情图片添加: productId={}, imageId={}", productId, saved.getId());
+        return toImageResponse(saved);
+    }
+
+    @Override
+    public List<ProductImageResponse> getProductImages(Long productId) {
+        findProductOrThrow(productId);
+        return productImageRepository.findByProductIdOrderBySortOrderAsc(productId)
+                .stream()
+                .map(this::toImageResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void deleteProductImage(Long productId, Long imageId, Long currentUserId) {
+        Product product = findProductOrThrow(productId);
+        if (!product.getSellerId().equals(currentUserId)) {
+            throw new BusinessException(403, "只能删除自己产品的图片");
+        }
+
+        ProductImage image = productImageRepository.findById(imageId)
+                .orElseThrow(() -> new BusinessException(404, "图片不存在"));
+        if (!image.getProductId().equals(productId)) {
+            throw new BusinessException("该图片不属于此产品");
+        }
+
+        productImageRepository.deleteById(imageId);
+        log.info("产品详情图片删除: productId={}, imageId={}", productId, imageId);
+    }
+
+    @Override
+    @Transactional
+    public List<ProductImageResponse> setProductImages(Long productId, List<ProductImageRequest> images, Long currentUserId) {
+        Product product = findProductOrThrow(productId);
+        if (!product.getSellerId().equals(currentUserId)) {
+            throw new BusinessException(403, "只能设置自己产品的图片");
+        }
+
+        if (images.size() > 20) {
+            throw new BusinessException("每个产品最多上传20张详情图片");
+        }
+
+        // 删除旧图片，批量创建新图片
+        productImageRepository.deleteByProductId(productId);
+
+        List<ProductImage> newImages = new ArrayList<>();
+        for (int i = 0; i < images.size(); i++) {
+            ProductImageRequest req = images.get(i);
+            newImages.add(ProductImage.builder()
+                    .productId(productId)
+                    .imageUrl(req.getImageUrl())
+                    .caption(req.getCaption())
+                    .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : i)
+                    .imageType(parseImageType(req.getImageType()))
+                    .build());
+        }
+
+        List<ProductImage> saved = productImageRepository.saveAll(newImages);
+        log.info("产品详情图片批量设置: productId={}, count={}", productId, saved.size());
+        return saved.stream().map(this::toImageResponse).toList();
+    }
+
+    private ProductImage.ImageType parseImageType(String type) {
+        if (type == null || type.isBlank()) return ProductImage.ImageType.DETAIL;
+        try {
+            return ProductImage.ImageType.valueOf(type.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ProductImage.ImageType.DETAIL;
+        }
+    }
+
+    private ProductImageResponse toImageResponse(ProductImage image) {
+        return ProductImageResponse.builder()
+                .id(image.getId())
+                .productId(image.getProductId())
+                .imageUrl(image.getImageUrl())
+                .caption(image.getCaption())
+                .sortOrder(image.getSortOrder())
+                .imageType(image.getImageType().name())
+                .createdAt(image.getCreatedAt())
+                .build();
     }
 }

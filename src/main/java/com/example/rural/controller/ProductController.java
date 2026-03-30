@@ -2,9 +2,11 @@ package com.example.rural.controller;
 
 import com.example.rural.common.PageResult;
 import com.example.rural.common.Result;
+import com.example.rural.dto.request.ProductImageRequest;
 import com.example.rural.dto.request.ProductQueryRequest;
 import com.example.rural.dto.request.ProductRequest;
 import com.example.rural.dto.response.ProductCategoryResponse;
+import com.example.rural.dto.response.ProductImageResponse;
 import com.example.rural.dto.response.ProductResponse;
 import com.example.rural.service.ProductService;
 import jakarta.validation.Valid;
@@ -171,6 +173,60 @@ public class ProductController {
     public Result<List<ProductResponse>> getMyProducts(Authentication auth) {
         Long sellerId = (Long) auth.getPrincipal();
         return Result.ok(productService.getMyProducts(sellerId));
+    }
+
+    // ==================== 产品详情图片接口 ====================
+
+    /**
+     * 获取产品的所有详情图片（公开）
+     *
+     * 请求: GET /api/v1/products/1/images
+     */
+    @GetMapping("/api/v1/products/{id}/images")
+    public Result<List<ProductImageResponse>> getProductImages(@PathVariable Long id) {
+        return Result.ok(productService.getProductImages(id));
+    }
+
+    /**
+     * 为产品添加一张详情图片（需登录，仅发布者）
+     *
+     * 请求: POST /api/v1/products/1/images
+     * Body: { "imageUrl": "/uploads/2026/03/01/xxx.jpg", "caption": "产品正面", "imageType": "DETAIL" }
+     */
+    @PostMapping("/api/v1/products/{id}/images")
+    public Result<ProductImageResponse> addProductImage(@PathVariable Long id,
+                                                        @Valid @RequestBody ProductImageRequest request,
+                                                        Authentication auth) {
+        Long currentUserId = (Long) auth.getPrincipal();
+        return Result.ok("图片添加成功", productService.addProductImage(id, request, currentUserId));
+    }
+
+    /**
+     * 删除产品的一张详情图片（需登录，仅发布者）
+     *
+     * 请求: DELETE /api/v1/products/1/images/5
+     */
+    @DeleteMapping("/api/v1/products/{id}/images/{imageId}")
+    public Result<Void> deleteProductImage(@PathVariable Long id,
+                                           @PathVariable Long imageId,
+                                           Authentication auth) {
+        Long currentUserId = (Long) auth.getPrincipal();
+        productService.deleteProductImage(id, imageId, currentUserId);
+        return Result.ok("图片已删除", null);
+    }
+
+    /**
+     * 批量设置产品详情图片（替换所有现有图片，需登录，仅发布者）
+     *
+     * 请求: PUT /api/v1/products/1/images
+     * Body: [ { "imageUrl": "...", "caption": "...", "sortOrder": 0 }, ... ]
+     */
+    @PutMapping("/api/v1/products/{id}/images")
+    public Result<List<ProductImageResponse>> setProductImages(@PathVariable Long id,
+                                                               @RequestBody List<ProductImageRequest> images,
+                                                               Authentication auth) {
+        Long currentUserId = (Long) auth.getPrincipal();
+        return Result.ok("图片设置成功", productService.setProductImages(id, images, currentUserId));
     }
 
     // ==================== 管理员接口 ====================
