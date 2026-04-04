@@ -1,6 +1,6 @@
 # 乡村振兴管理系统 · 后端 API
 
-> Spring Boot 4.0.2 + JPA + MySQL + JWT · 124 个 Java 文件 · 19 张数据库表 · 80+ API 接口
+> Spring Boot 4.0.2 + JPA + MySQL + JWT · 130+ 个 Java 文件 · 20 张数据库表 · 90+ API 接口
 
 ## 快速开始
 
@@ -31,21 +31,41 @@ JPA 自动建表。启动后自动创建 3 个测试账号：
 
 Swagger 文档: http://localhost:8080/swagger-ui.html
 
-### 测试文件
+### 测试
 
-项目根目录下 4 个 `.txt` 文件是 JetBrains HTTP Client 格式的测试脚本：
+#### 方式一：JUnit 自动化测试（推荐，无需 IDEA）
+
+```bash
+mvn test
+```
+
+使用 **H2 内存数据库**，无需外部 MySQL。自动初始化数据、注册用户、执行完整流程。
+
+| 测试类 | 覆盖模块 | 测试点数 |
+|--------|----------|----------|
+| `ProductIntegrationTest` | 产品发布/标签/PATCH/售罄恢复/详情图片/权限 | 25+ |
+| `CartOrderIntegrationTest` | 购物车/下单/状态流转/取消/异常场景 | 20+ |
+| `TourismIntegrationTest` | 景点/评论/收藏/路线规划 | 12+ |
+| `FinanceIntegrationTest` | 贷款/保险/仪表盘/权限 | 10+ |
+| `LocalCacheIntegrationTest` | 本地图片导入/缓存/删除/清空 | 10+ |
+
+测试基类 `BaseIntegrationTest` 提供：
+- MockMvc + JWT 登录快捷方法
+- `doGet/doPost/doPut/doPatch/doDelete` HTTP 工具
+- `register/login` 一键注册登录
+- `parseResponse/getCode/getData` 响应解析
+
+#### 方式二：HTTP Client 脚本（需 IntelliJ IDEA）
+
+`src/` 目录下的 `.http` 文件是 JetBrains HTTP Client 格式：
 
 | 文件 | 覆盖模块 |
 |------|----------|
-| `api-test-tourism.txt` | 旅游景点、评论、收藏、管理员审核 |
-| `api-test-cart-order.txt` | 购物车、订单、发货 |
-| `api-test-booking-route.txt` | 票务、预约、路线规划 |
-| `api-test-finance.txt` | 贷款、保险、财务看板、信用报告 |
-| `api-test-product-tags.txt` | 标签、补货、调价、购买人次 |
-| `api-test-address.txt` | 地址簿CRUD、默认地址、下单集成、快照验证 |
-| `api-test-upload.txt` | 图片上传、静态访问、错误场景、产品集成 |
-
-下载后重命名 `.txt` → `.http`，在 IntelliJ IDEA 中直接运行。
+| `api-test-product-tags.http` | 标签、补货、调价、购买人次 |
+| `api-test-cart-order.http` | 购物车、订单、发货 |
+| `api-test-tourism.http` | 旅游景点、评论、收藏、审核 |
+| `api-test-booking-route.http` | 票务、预约、路线规划 |
+| `api-test-finance.http` | 贷款、保险、财务看板 |
 
 ---
 
@@ -74,7 +94,7 @@ Swagger 文档: http://localhost:8080/swagger-ui.html
 │  Repository 层 (JPA)                                              │
 │  数据库操作，Spring Data 自动生成 SQL                              │
 ├──────────────────────────────────────────────────────────────────┤
-│  MySQL · 18 张表 · JPA 自动建表(ddl-auto: update)                 │
+│  MySQL · 20 张表 · JPA 自动建表(ddl-auto: update)                 │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -207,12 +227,12 @@ POST /api/v1/auth/register
 
 ### 模块三：农产品
 
-> 表: `product`, `product_category`
+> 表: `product`, `product_category`, `product_image`
 
 | 方法 | 路径 | 权限 | 说明 |
 |------|------|------|------|
 | GET | `/api/v1/products?keyword=&categoryId=&minPrice=&maxPrice=&tag=有机&sort=newest&page=1&size=10` | 公开 | 产品列表(多条件) |
-| GET | `/api/v1/products/{id}` | 公开 | 详情 |
+| GET | `/api/v1/products/{id}` | 公开 | 详情(含详情图列表) |
 | GET | `/api/v1/products/categories` | 公开 | 分类树 |
 | GET | `/api/v1/products/tags` | 公开 | 所有标签(去重排序) |
 | POST | `/api/v1/products` | 登录 | 发布 |
@@ -221,6 +241,10 @@ POST /api/v1/auth/register
 | PUT | `/api/v1/products/{id}/status` | 发布者 | 上/下架 |
 | DELETE | `/api/v1/products/{id}` | 发布者/管理员 | 删除 |
 | GET | `/api/v1/products/mine` | 登录 | 我的产品 |
+| **GET** | **`/api/v1/products/{id}/images`** | **公开** | **🆕 获取详情图片列表** |
+| **POST** | **`/api/v1/products/{id}/images`** | **发布者** | **🆕 添加一张详情图** |
+| **PUT** | **`/api/v1/products/{id}/images`** | **发布者** | **🆕 批量替换所有详情图** |
+| **DELETE** | **`/api/v1/products/{id}/images/{imageId}`** | **发布者** | **🆕 删除一张详情图** |
 | POST | `/api/v1/admin/categories` | 管理员 | 添加分类 |
 
 sort: `newest`, `price_asc`, `price_desc`, `sales_desc`, `buyers_desc`
@@ -230,7 +254,36 @@ PATCH 部分修改: 只传要改的字段，其他不变
 - 调价: `{ "price": 3.99 }`
 - 标签: `{ "tags": "有机,绿色食品" }` / `{ "tags": "" }` 清除
 
-产品返回:
+#### 产品详情图片（🆕 新增）
+
+商户可以为每个产品上传多张详情图（除封面 `imageUrl` 外），用于展示不同角度、包装、产地实拍等。
+
+添加图片请求:
+```json
+POST /api/v1/products/1/images
+{
+  "imageUrl": "/uploads/2026/04/01/xxx.jpg",
+  "caption": "苹果正面实拍",
+  "sortOrder": 0,
+  "imageType": "DETAIL"
+}
+```
+
+批量设置请求（替换全部现有图片）:
+```json
+PUT /api/v1/products/1/images
+[
+  { "imageUrl": "/uploads/xxx.jpg", "caption": "正面", "sortOrder": 0, "imageType": "DETAIL" },
+  { "imageUrl": "/uploads/yyy.jpg", "caption": "侧面", "sortOrder": 1, "imageType": "DETAIL" },
+  { "imageUrl": "/uploads/zzz.jpg", "caption": "产地实拍", "sortOrder": 2, "imageType": "ORIGIN" }
+]
+```
+
+图片类型: `DETAIL`(详情图) / `SPEC`(规格图) / `ORIGIN`(产地实拍)
+
+限制: 每产品最多 20 张详情图，仅产品发布者可操作
+
+产品详情返回（包含 `detailImages`）:
 
 ```json
 {
@@ -238,10 +291,14 @@ PATCH 部分修改: 只传要改的字段，其他不变
   "price": 5.50, "stock": 500, "salesCount": 120, "buyerCount": 45,
   "unit": "斤", "origin": "山东烟台",
   "tags": "有机,绿色食品,助农",
-  "imageUrl": "https://...",
+  "imageUrl": "/uploads/cover.jpg",
   "categoryId": 2, "categoryName": "苹果",
   "sellerId": 2, "sellerName": "张三果园",
   "status": "ON_SALE",
+  "detailImages": [
+    { "id": 1, "imageUrl": "/uploads/xxx.jpg", "caption": "正面实拍", "sortOrder": 0, "imageType": "DETAIL" },
+    { "id": 2, "imageUrl": "/uploads/yyy.jpg", "caption": "产地实拍", "sortOrder": 1, "imageType": "ORIGIN" }
+  ],
   "createdAt": "2026-02-25 10:30:00"
 }
 ```
@@ -565,6 +622,66 @@ PATCH 部分修改: `{ "minCreditScore": 35 }` — 只改门槛，其他字段�
 
 前端用法: 上传后将 `data.url` 填入产品的 `imageUrl`、景点的封面等字段
 
+### 模块十四：本地图片缓存（🆕 新增）
+
+> 支持离线场景的本地图片存储与管理，无需网络也能导入和展示图片
+
+| 方法 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| **POST** | **`/api/v1/cache/import-local`** | **登录** | **从本地路径导入图片** |
+| **POST** | **`/api/v1/cache/cache-uploaded`** | **登录** | **缓存已上传图片到本地** |
+| **GET** | **`/api/v1/cache/images`** | **登录** | **列出我的缓存图片** |
+| **DELETE** | **`/api/v1/cache/images/{filename}`** | **登录** | **删除某张缓存图片** |
+| **DELETE** | **`/api/v1/cache/images`** | **登录** | **清空我的缓存** |
+| GET | `/local-cache/{userId}/xxx.jpg` | 公开 | 访问缓存图片（静态资源） |
+
+#### 使用场景
+
+**场景一：离线环境导入本地图片**
+
+商户在没有网络的情况下，可以直接从本地文件系统导入产品图片：
+
+```json
+POST /api/v1/cache/import-local
+{ "filePath": "/home/user/photos/product_front.jpg" }
+
+// 返回
+{ "url": "/local-cache/2/a1b2c3d4.jpg" }
+```
+
+导入后的 URL 可以直接用于产品封面 `imageUrl` 或详情图片。
+
+**场景二：缓存已上传图片到本地**
+
+将通过 HTTP 上传的图片缓存到本地，断网时仍可展示：
+
+```json
+POST /api/v1/cache/cache-uploaded
+{ "uploadUrl": "/uploads/2026/03/01/xxx.jpg" }
+
+// 返回
+{ "url": "/local-cache/2/xxx.jpg" }
+```
+
+**场景三：查看与管理缓存**
+
+```
+GET  /api/v1/cache/images           → ["/local-cache/2/a1b2.jpg", "/local-cache/2/c3d4.jpg"]
+DELETE /api/v1/cache/images/a1b2.jpg → 删除单张
+DELETE /api/v1/cache/images          → 清空全部
+```
+
+#### 存储结构
+
+```
+local-cache/
+  └── {userId}/
+        ├── a1b2c3d4.jpg     ← 从本地导入
+        └── e5f6g7h8.png     ← 从uploads缓存
+```
+
+限制: JPG/PNG/GIF/WebP/BMP, 最大 5MB, 路径穿越安全校验, 用户隔离存储
+
 ---
 
 ## 权限矩阵
@@ -591,6 +708,7 @@ PATCH 部分修改: `{ "minCreditScore": 35 }` — 只改门槛，其他字段�
 ```
 user (6种角色)
  ├──→ product ←── product_category
+ │     └──→ product_image (🆕 详情图片)
  ├──→ cart_item
  ├──→ address (收货/发货地址簿)
  ├──→ orders ──→ order_item ──→ product
@@ -604,7 +722,7 @@ user (6种角色)
  └──→ insurance_product ──→ insurance_policy ──→ insurance_claim
 ```
 
-共 19 张表, JPA `ddl-auto: update` 自动建表
+共 20 张表, JPA `ddl-auto: update` 自动建表
 
 ---
 
@@ -621,3 +739,4 @@ user (6种角色)
 | 快照冻结 | 下单冻结价格+地址, 贷款申请冻结信用分 |
 | 容量保护 | 预约实时检查余量防超卖 |
 | 防重复 | 同名产品/重复申请/重复理赔拦截 |
+| 文件安全 | 图片类型/大小校验、路径穿越防护、用户隔离存储 |
